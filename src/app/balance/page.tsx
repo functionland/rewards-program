@@ -6,17 +6,17 @@ import {
   TableContainer, TableHead, TableRow, TextField, Button, Alert,
   CircularProgress,
 } from "@mui/material";
-import { useAccount, useReadContract } from "wagmi";
+import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { useSearchParams } from "next/navigation";
 import { zeroAddress } from "viem";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels } from "@/config/contracts";
-import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatDate } from "@/lib/utils";
+import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatDate, formatContractError } from "@/lib/utils";
 import { useProgramCount, useProgram, useTimeLocks, useDirectChildren, useTransferToParent, useWithdraw, useApproveToken, useAddTokens } from "@/hooks/useRewardsProgram";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 
-/* ── Per-program membership row ── */
+/* -- Per-program membership row -- */
 
-function MemberProgramRow({ memberID, programId, isOwner }: { memberID: string; programId: number; isOwner: boolean }) {
+function MemberProgramRow({ memberID, programId }: { memberID: string; programId: number }) {
   const memberIDBytes = toBytes12(memberID);
 
   const { data: member } = useReadContract({
@@ -37,7 +37,6 @@ function MemberProgramRow({ memberID, programId, isOwner }: { memberID: string; 
     query: { enabled: !!member?.wallet && member.wallet !== zeroAddress },
   });
 
-  // Don't render if member doesn't exist in this program
   if (!member || !member.wallet || member.wallet === zeroAddress) return null;
 
   return (
@@ -57,9 +56,9 @@ function MemberProgramRow({ memberID, programId, isOwner }: { memberID: string; 
   );
 }
 
-/* ── Actions panel (only for wallet owner) ── */
+/* -- Actions panel (only for wallet owner) -- */
 
-function OwnerActions({ memberID, memberWallet }: { memberID: string; memberWallet: string }) {
+function OwnerActions({ memberWallet }: { memberWallet: string }) {
   const { address } = useAccount();
   const isOwner = address?.toLowerCase() === memberWallet.toLowerCase();
 
@@ -98,7 +97,7 @@ function OwnerActions({ memberID, memberWallet }: { memberID: string; memberWall
             fullWidth size="small" type="number" />
           <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
             <Button size="small" variant="outlined" onClick={() => approve(depositAmount)}
-              disabled={isApproving || isAppConf || !depositAmount}>
+              disabled={isApproving || isAppConf || !depositAmount || !disclaimer}>
               {isApproving || isAppConf ? <CircularProgress size={16} /> : "Approve"}
             </Button>
             <Button size="small" variant="contained" onClick={() => addTokens(pid, depositAmount)}
@@ -108,7 +107,7 @@ function OwnerActions({ memberID, memberWallet }: { memberID: string; memberWall
           </Box>
           {approveSuccess && <Alert severity="info" sx={{ mt: 1 }}>Approved. Now click Deposit.</Alert>}
           {depositSuccess && <Alert severity="success" sx={{ mt: 1 }}>Deposited!</Alert>}
-          {depositError && <Alert severity="error" sx={{ mt: 1 }}>{depositError.message}</Alert>}
+          {depositError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(depositError)}</Alert>}
         </Grid>
 
         {/* Transfer to Parent */}
@@ -124,7 +123,7 @@ function OwnerActions({ memberID, memberWallet }: { memberID: string; memberWall
             {isTransBack || isTransBackConf ? <CircularProgress size={16} /> : "Transfer"}
           </Button>
           {transBackSuccess && <Alert severity="success" sx={{ mt: 1 }}>Transferred!</Alert>}
-          {transBackError && <Alert severity="error" sx={{ mt: 1 }}>{transBackError.message}</Alert>}
+          {transBackError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(transBackError)}</Alert>}
         </Grid>
 
         {/* Withdraw */}
@@ -138,7 +137,7 @@ function OwnerActions({ memberID, memberWallet }: { memberID: string; memberWall
             {isWithdrawing || isWithConf ? <CircularProgress size={16} /> : "Withdraw"}
           </Button>
           {withdrawSuccess && <Alert severity="success" sx={{ mt: 1 }}>Withdrawn!</Alert>}
-          {withdrawError && <Alert severity="error" sx={{ mt: 1 }}>{withdrawError.message}</Alert>}
+          {withdrawError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(withdrawError)}</Alert>}
         </Grid>
       </Grid>
 
@@ -147,7 +146,7 @@ function OwnerActions({ memberID, memberWallet }: { memberID: string; memberWall
   );
 }
 
-/* ── Time Locks detail ── */
+/* -- Time Locks detail -- */
 
 function TimeLockDetails({ programId, wallet }: { programId: number; wallet: `0x${string}` }) {
   const { data: timeLocks } = useTimeLocks(programId, wallet);
@@ -165,7 +164,7 @@ function TimeLockDetails({ programId, wallet }: { programId: number; wallet: `0x
   );
 }
 
-/* ── Sub-member row ── */
+/* -- Sub-member row -- */
 
 function SubMemberRow({ programId, wallet }: { programId: number; wallet: `0x${string}` }) {
   const { data: member } = useReadContract({
@@ -199,7 +198,7 @@ function SubMemberRow({ programId, wallet }: { programId: number; wallet: `0x${s
   );
 }
 
-/* ── Sub-members for a program ── */
+/* -- Sub-members for a program -- */
 
 function SubMembersSection({ programId, wallet }: { programId: number; wallet: `0x${string}` }) {
   const { data: children } = useDirectChildren(programId, wallet);
@@ -236,7 +235,7 @@ function SubMembersSection({ programId, wallet }: { programId: number; wallet: `
   );
 }
 
-/* ── Main balance view ── */
+/* -- Main balance view -- */
 
 function BalanceContent() {
   const searchParams = useSearchParams();
@@ -247,37 +246,33 @@ function BalanceContent() {
   const { data: programCount } = useProgramCount();
   const count = Number(programCount || 0);
 
-  // Look up the member in program 1 to get their wallet (for ownership check)
+  // Dynamic wallet discovery: multicall getMemberByID across all programs
   const memberIDBytes = toBytes12(searchID);
-  const { data: firstMatch } = useReadContract({
+  const contracts = Array.from({ length: count }, (_, i) => ({
     address: CONTRACTS.rewardsProgram,
     abi: REWARDS_PROGRAM_ABI,
-    functionName: "getMemberByID",
-    args: [memberIDBytes, 1],
+    functionName: "getMemberByID" as const,
+    args: [memberIDBytes, i + 1] as const,
+  }));
+
+  const { data: multicallResults } = useReadContracts({
+    contracts: contracts.length > 0 ? contracts : undefined,
     query: { enabled: !!searchID && count > 0 },
   });
 
-  // Try to find the wallet by iterating if program 1 didn't have it
-  // We'll check up to the first few programs for the wallet address
-  const { data: match2 } = useReadContract({
-    address: CONTRACTS.rewardsProgram,
-    abi: REWARDS_PROGRAM_ABI,
-    functionName: "getMemberByID",
-    args: [memberIDBytes, 2],
-    query: { enabled: !!searchID && count >= 2 && (!firstMatch?.wallet || firstMatch.wallet === zeroAddress) },
-  });
-  const { data: match3 } = useReadContract({
-    address: CONTRACTS.rewardsProgram,
-    abi: REWARDS_PROGRAM_ABI,
-    functionName: "getMemberByID",
-    args: [memberIDBytes, 3],
-    query: { enabled: !!searchID && count >= 3 && (!firstMatch?.wallet || firstMatch.wallet === zeroAddress) && (!match2?.wallet || match2.wallet === zeroAddress) },
-  });
-
-  const memberWallet =
-    (firstMatch?.wallet && firstMatch.wallet !== zeroAddress ? firstMatch.wallet :
-    match2?.wallet && match2.wallet !== zeroAddress ? match2.wallet :
-    match3?.wallet && match3.wallet !== zeroAddress ? match3.wallet : "") as string;
+  // Find the first result that has a valid wallet
+  let memberWallet = "";
+  if (multicallResults) {
+    for (const result of multicallResults) {
+      if (result.status === "success" && result.result) {
+        const member = result.result as { wallet: string };
+        if (member.wallet && member.wallet !== zeroAddress) {
+          memberWallet = member.wallet;
+          break;
+        }
+      }
+    }
+  }
 
   const handleSearch = () => {
     setSearchID(memberID);
@@ -313,45 +308,51 @@ function BalanceContent() {
             </Paper>
           )}
 
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>Programs & Balances for &quot;{searchID}&quot;</Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
-              Balance columns: Withdrawable / Permanently Locked / Time-Locked (FULA)
-            </Typography>
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Program</TableCell>
-                    <TableCell>Code</TableCell>
-                    <TableCell>Role</TableCell>
-                    <TableCell>Parent</TableCell>
-                    <TableCell>Withdrawable</TableCell>
-                    <TableCell>Locked</TableCell>
-                    <TableCell>Time-Locked</TableCell>
-                    <TableCell>Status</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {Array.from({ length: count }, (_, i) => (
-                    <MemberProgramRow key={i + 1} memberID={searchID} programId={i + 1} isOwner={false} />
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-
-          {/* Sub-members per program */}
-          {memberWallet && (
-            <Paper sx={{ p: 2, mt: 3 }}>
-              <Typography variant="h6" gutterBottom>Sub-Members</Typography>
-              {Array.from({ length: count }, (_, i) => (
-                <SubMembersSection key={i + 1} programId={i + 1} wallet={memberWallet as `0x${string}`} />
-              ))}
-            </Paper>
+          {!memberWallet && (
+            <Alert severity="warning" sx={{ mb: 3 }}>No member found with ID &quot;{searchID}&quot; in any program.</Alert>
           )}
 
-          {memberWallet && <OwnerActions memberID={searchID} memberWallet={memberWallet} />}
+          {memberWallet && (
+            <>
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>Programs & Balances for &quot;{searchID}&quot;</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
+                  Balance columns: Withdrawable / Permanently Locked / Time-Locked (FULA)
+                </Typography>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Program</TableCell>
+                        <TableCell>Code</TableCell>
+                        <TableCell>Role</TableCell>
+                        <TableCell>Parent</TableCell>
+                        <TableCell>Withdrawable</TableCell>
+                        <TableCell>Locked</TableCell>
+                        <TableCell>Time-Locked</TableCell>
+                        <TableCell>Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {Array.from({ length: count }, (_, i) => (
+                        <MemberProgramRow key={i + 1} memberID={searchID} programId={i + 1} />
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
+
+              {/* Sub-members per program */}
+              <Paper sx={{ p: 2, mt: 3 }}>
+                <Typography variant="h6" gutterBottom>Sub-Members</Typography>
+                {Array.from({ length: count }, (_, i) => (
+                  <SubMembersSection key={i + 1} programId={i + 1} wallet={memberWallet as `0x${string}`} />
+                ))}
+              </Paper>
+
+              <OwnerActions memberWallet={memberWallet} />
+            </>
+          )}
         </>
       )}
 

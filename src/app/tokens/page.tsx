@@ -13,7 +13,7 @@ import {
   useWithdraw, useMemberBalance, useTimeLocks, useTokenBalance, useTransferCount,
   useTransferRecord,
 } from "@/hooks/useRewardsProgram";
-import { formatFula, formatDate } from "@/lib/utils";
+import { formatFula, formatDate, isValidAddress, formatContractError } from "@/lib/utils";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 
 function TabPanel({ children, value, index }: { children: React.ReactNode; value: number; index: number }) {
@@ -50,6 +50,7 @@ export default function TokensPage() {
 
   // Deposit state
   const [depositAmount, setDepositAmount] = useState("");
+  const [depositDisclaimer, setDepositDisclaimer] = useState(false);
   const { approve, isPending: isApproving, isConfirming: isAppConfirming, isSuccess: approveSuccess } = useApproveToken();
   const { addTokens, isPending: isDepositing, isConfirming: isDepConfirming, isSuccess: depositSuccess, error: depositError } = useAddTokens();
 
@@ -65,11 +66,25 @@ export default function TokensPage() {
   // Transfer back state
   const [parentTo, setParentTo] = useState("");
   const [parentAmount, setParentAmount] = useState("");
+  const [parentDisclaimer, setParentDisclaimer] = useState(false);
   const { transferBack, isPending: isTransBack, isConfirming: isTransBackConf, isSuccess: transBackSuccess, error: transBackError } = useTransferToParent();
 
   // Withdraw state
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawDisclaimer, setWithdrawDisclaimer] = useState(false);
   const { withdraw, isPending: isWithdrawing, isConfirming: isWithConfirming, isSuccess: withdrawSuccess, error: withdrawError } = useWithdraw();
+
+  const transferToValid = !transferTo || isValidAddress(transferTo);
+
+  // Wallet guard
+  if (!address) {
+    return (
+      <Box>
+        <Typography variant="h4" gutterBottom>Token Operations</Typography>
+        <Alert severity="info">Connect your wallet to access token operations.</Alert>
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -131,25 +146,27 @@ export default function TokensPage() {
           </Typography>
           <TextField label="Amount (FULA)" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)}
             fullWidth margin="normal" type="number" />
+          <OnChainDisclaimer accepted={depositDisclaimer} onChange={setDepositDisclaimer} />
           <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
             <Button variant="outlined" onClick={() => approve(depositAmount)}
-              disabled={isApproving || isAppConfirming || !depositAmount}>
+              disabled={isApproving || isAppConfirming || !depositAmount || !depositDisclaimer}>
               {isApproving || isAppConfirming ? <CircularProgress size={20} /> : "1. Approve"}
             </Button>
             <Button variant="contained" onClick={() => addTokens(pid, depositAmount)}
-              disabled={isDepositing || isDepConfirming || !depositAmount}>
+              disabled={isDepositing || isDepConfirming || !depositAmount || !depositDisclaimer}>
               {isDepositing || isDepConfirming ? <CircularProgress size={20} /> : "2. Deposit"}
             </Button>
           </Box>
           {approveSuccess && <Alert severity="info" sx={{ mt: 2 }}>Approval confirmed. Now click Deposit.</Alert>}
           {depositSuccess && <Alert severity="success" sx={{ mt: 2 }}>Deposit successful!</Alert>}
-          {depositError && <Alert severity="error" sx={{ mt: 2 }}>{depositError.message}</Alert>}
+          {depositError && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(depositError)}</Alert>}
         </TabPanel>
 
         {/* TRANSFER TO SUB-MEMBER */}
         <TabPanel value={tab} index={1}>
           <TextField label="Recipient Wallet" value={transferTo} onChange={(e) => setTransferTo(e.target.value)}
-            fullWidth margin="normal" placeholder="0x..." />
+            fullWidth margin="normal" placeholder="0x..."
+            error={!!transferTo && !transferToValid} helperText={transferTo && !transferToValid ? "Invalid wallet address" : ""} />
           <TextField label="Amount (FULA)" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value)}
             fullWidth margin="normal" type="number" />
           <TextField label="Note" value={transferNote} onChange={(e) => setTransferNote(e.target.value)}
@@ -168,11 +185,11 @@ export default function TokensPage() {
           <OnChainDisclaimer accepted={transferDisclaimer} onChange={setTransferDisclaimer} />
           <Button variant="contained" sx={{ mt: 2 }}
             onClick={() => transfer(pid, transferTo as `0x${string}`, transferAmount, transferNote, transferLocked, parseInt(transferLockDays))}
-            disabled={isTransferring || isTransConfirming || !transferTo || !transferAmount || !transferDisclaimer}>
+            disabled={isTransferring || isTransConfirming || !transferTo || !transferAmount || !transferDisclaimer || !transferToValid}>
             {isTransferring || isTransConfirming ? <CircularProgress size={20} /> : "Transfer"}
           </Button>
           {transferSuccess && <Alert severity="success" sx={{ mt: 2 }}>Transfer successful!</Alert>}
-          {transferError && <Alert severity="error" sx={{ mt: 2 }}>{transferError.message}</Alert>}
+          {transferError && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(transferError)}</Alert>}
         </TabPanel>
 
         {/* TRANSFER TO PARENT */}
@@ -184,13 +201,14 @@ export default function TokensPage() {
             fullWidth margin="normal" placeholder="0x... (leave empty for direct parent)" />
           <TextField label="Amount (FULA)" value={parentAmount} onChange={(e) => setParentAmount(e.target.value)}
             fullWidth margin="normal" type="number" />
+          <OnChainDisclaimer accepted={parentDisclaimer} onChange={setParentDisclaimer} />
           <Button variant="contained" sx={{ mt: 2 }}
             onClick={() => transferBack(pid, (parentTo || zeroAddress) as `0x${string}`, parentAmount)}
-            disabled={isTransBack || isTransBackConf || !parentAmount}>
+            disabled={isTransBack || isTransBackConf || !parentAmount || !parentDisclaimer}>
             {isTransBack || isTransBackConf ? <CircularProgress size={20} /> : "Transfer to Parent"}
           </Button>
           {transBackSuccess && <Alert severity="success" sx={{ mt: 2 }}>Transfer successful!</Alert>}
-          {transBackError && <Alert severity="error" sx={{ mt: 2 }}>{transBackError.message}</Alert>}
+          {transBackError && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(transBackError)}</Alert>}
         </TabPanel>
 
         {/* WITHDRAW */}
@@ -200,13 +218,14 @@ export default function TokensPage() {
           </Typography>
           <TextField label="Amount (FULA)" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)}
             fullWidth margin="normal" type="number" />
+          <OnChainDisclaimer accepted={withdrawDisclaimer} onChange={setWithdrawDisclaimer} />
           <Button variant="contained" sx={{ mt: 2 }} color="secondary"
             onClick={() => withdraw(pid, withdrawAmount)}
-            disabled={isWithdrawing || isWithConfirming || !withdrawAmount}>
+            disabled={isWithdrawing || isWithConfirming || !withdrawAmount || !withdrawDisclaimer}>
             {isWithdrawing || isWithConfirming ? <CircularProgress size={20} /> : "Withdraw"}
           </Button>
           {withdrawSuccess && <Alert severity="success" sx={{ mt: 2 }}>Withdrawal successful!</Alert>}
-          {withdrawError && <Alert severity="error" sx={{ mt: 2 }}>{withdrawError.message}</Alert>}
+          {withdrawError && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(withdrawError)}</Alert>}
         </TabPanel>
 
         {/* HISTORY */}

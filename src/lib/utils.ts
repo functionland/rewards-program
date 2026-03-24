@@ -1,4 +1,4 @@
-import { formatUnits, type Hex } from "viem";
+import { formatUnits, parseUnits, isAddress, type Hex } from "viem";
 
 export function toBytes8(str: string): Hex {
   const encoder = new TextEncoder();
@@ -36,7 +36,57 @@ function hexToBytes(hex: string): Uint8Array {
 }
 
 export function formatFula(amount: bigint): string {
-  return formatUnits(amount, 18);
+  const raw = formatUnits(amount, 18);
+  const [whole, decimals] = raw.split(".");
+  if (!decimals || decimals === "0") return whole;
+  const trimmed = decimals.slice(0, 4).replace(/0+$/, "");
+  return trimmed ? `${whole}.${trimmed}` : whole;
+}
+
+export function safeParseAmount(amount: string): bigint | null {
+  try {
+    const trimmed = amount.trim();
+    if (!trimmed || isNaN(Number(trimmed)) || Number(trimmed) < 0) return null;
+    return parseUnits(trimmed, 18);
+  } catch {
+    return null;
+  }
+}
+
+export function isValidAddress(addr: string): boolean {
+  return isAddress(addr);
+}
+
+const ERROR_MAP: Record<string, string> = {
+  InsufficientBalance: "Insufficient balance for this operation.",
+  MemberNotFound: "Member not found or inactive in this program.",
+  MemberAlreadyExists: "This wallet is already a member of the program.",
+  DuplicateMemberID: "This Member ID is already taken in the program.",
+  InvalidMemberID: "Member ID cannot be empty.",
+  InvalidAmount: "Invalid token amount.",
+  InvalidRole: "Invalid role for this operation.",
+  UnauthorizedRole: "You do not have permission to assign this role.",
+  NotSubMember: "Recipient is not your sub-member in this program.",
+  NotInParentChain: "Target is not in your parent chain.",
+  NoParentFound: "No parent found for this member.",
+  ProgramNotFound: "Program not found.",
+  ProgramNotActive: "This program is not active.",
+  DuplicateProgramCode: "A program with this code already exists.",
+  InvalidProgramCode: "Program code cannot be empty.",
+  LockTimeTooLong: "Lock time exceeds maximum of 1095 days (3 years).",
+  MaxTimeLockTranchesReached: "Maximum number of time-lock tranches reached (50).",
+  NoteMustBe256Bytes: "Note must be 256 characters or fewer.",
+  InvalidAddress: "Invalid address provided.",
+};
+
+export function formatContractError(error: Error): string {
+  const msg = error.message || "";
+  for (const [key, friendly] of Object.entries(ERROR_MAP)) {
+    if (msg.includes(key)) return friendly;
+  }
+  if (msg.includes("User rejected") || msg.includes("user rejected")) return "Transaction was rejected.";
+  if (msg.includes("insufficient funds")) return "Insufficient funds for gas fees.";
+  return "Transaction failed. Please try again.";
 }
 
 export function shortenAddress(address: string): string {

@@ -12,7 +12,12 @@
       "Bash(npm install:*)",
       "Bash(npx next:*)",
       "Bash(node -e \"console.log\\(require\\(''next/package.json''\\).version\\)\")",
-      "Bash(ls out/*.html)"
+      "Bash(ls out/*.html)",
+      "Bash(find /mnt/e/GitHub/fula-chain -type f -name *.sol)",
+      "Bash(find /mnt/e/GitHub/rewards-program/src -type f \\\\\\(-name *.ts -o -name *.tsx \\\\\\))",
+      "Bash(find /mnt/e/GitHub/rewards-program/src -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))",
+      "Bash(xargs ls:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

@@ -1,15 +1,24 @@
 "use client";
 
-import { AppBar, Toolbar, Typography, Box, Chip } from "@mui/material";
+import { AppBar, Toolbar, Typography, Box, Chip, IconButton } from "@mui/material";
+import MenuIcon from "@mui/icons-material/Menu";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useUserRole } from "@/hooks/useUserRole";
 
-export function Header() {
+export function Header({ onMenuToggle }: { onMenuToggle: () => void }) {
   const { highestRole, isConnected } = useUserRole();
 
   return (
     <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: 1, borderColor: "divider" }}>
       <Toolbar>
+        <IconButton
+          edge="start"
+          aria-label="open menu"
+          onClick={onMenuToggle}
+          sx={{ mr: 2, display: { md: "none" } }}
+        >
+          <MenuIcon />
+        </IconButton>
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
           Rewards Program
         </Typography>

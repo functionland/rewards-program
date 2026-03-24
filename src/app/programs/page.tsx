@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import {
   Typography, Box, Paper, Button, TextField, Grid, Chip, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Dialog, DialogTitle,
@@ -17,10 +17,10 @@ import {
   useAssignProgramAdmin, useAddMember, useMemberBalance,
 } from "@/hooks/useRewardsProgram";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberRoleEnum } from "@/config/contracts";
-import { fromBytes8, fromBytes12, shortenAddress, formatFula } from "@/lib/utils";
+import { fromBytes8, fromBytes12, shortenAddress, formatFula, isValidAddress, formatContractError } from "@/lib/utils";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 
-/* ── Program List Row ── */
+/* -- Program List Row -- */
 
 function ProgramRow({ programId }: { programId: number }) {
   const { data: program } = useProgram(programId);
@@ -41,7 +41,7 @@ function ProgramRow({ programId }: { programId: number }) {
   );
 }
 
-/* ── Member Row (for detail view) ── */
+/* -- Member Row (for detail view) -- */
 
 function MemberRow({ programId, wallet }: { programId: number; wallet: `0x${string}` }) {
   const { data: member } = useReadContract({
@@ -79,7 +79,7 @@ function MemberRow({ programId, wallet }: { programId: number; wallet: `0x${stri
   );
 }
 
-/* ── Program Detail View ── */
+/* -- Program Detail View -- */
 
 function ProgramDetail({ programId }: { programId: number }) {
   const { address } = useAccount();
@@ -104,13 +104,31 @@ function ProgramDetail({ programId }: { programId: number }) {
 
   const canAddMembers = isAdmin || role === MemberRoleEnum.ProgramAdmin || role === MemberRoleEnum.TeamLeader;
 
+  const paWalletValid = !paWallet || isValidAddress(paWallet);
+  const mWalletValid = !mWallet || isValidAddress(mWallet);
+
+  // Reset and close dialogs on success
+  useEffect(() => {
+    if (isSuccessPA) {
+      const t = setTimeout(() => { setOpenPA(false); setPaWallet(""); setPaMemberId(""); setPaDisclaimer(false); }, 1500);
+      return () => clearTimeout(t);
+    }
+  }, [isSuccessPA]);
+
+  useEffect(() => {
+    if (isSuccessM) {
+      const t = setTimeout(() => { setOpenMember(false); setMWallet(""); setMMemberId(""); setMRole(1); setMDisclaimer(false); }, 1500);
+      return () => clearTimeout(t);
+    }
+  }, [isSuccessM]);
+
   if (!program) return <Typography>Loading...</Typography>;
 
   return (
     <Box>
       <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
         <Box sx={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
-          <IconButton component={Link} href="/programs" sx={{ mt: 0.5 }}>
+          <IconButton component={Link} href="/programs" sx={{ mt: 0.5 }} aria-label="Back to programs">
             <ArrowBackIcon />
           </IconButton>
           <Box>
@@ -194,17 +212,18 @@ function ProgramDetail({ programId }: { programId: number }) {
         <DialogTitle>Assign Program Admin</DialogTitle>
         <DialogContent>
           <TextField label="Wallet Address" value={paWallet} onChange={(e) => setPaWallet(e.target.value)}
-            fullWidth margin="normal" placeholder="0x..." />
+            fullWidth margin="normal" placeholder="0x..."
+            error={!!paWallet && !paWalletValid} helperText={paWallet && !paWalletValid ? "Invalid wallet address" : ""} />
           <TextField label="Member ID" value={paMemberId} onChange={(e) => setPaMemberId(e.target.value)}
             fullWidth margin="normal" inputProps={{ maxLength: 12 }} />
-          {errorPA && <Alert severity="error" sx={{ mt: 2 }}>{errorPA.message}</Alert>}
+          {errorPA && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(errorPA)}</Alert>}
           {isSuccessPA && <Alert severity="success" sx={{ mt: 2 }}>Program Admin assigned!</Alert>}
           <OnChainDisclaimer accepted={paDisclaimer} onChange={setPaDisclaimer} />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenPA(false)}>Cancel</Button>
           <Button variant="contained" onClick={() => assignProgramAdmin(programId, paWallet as `0x${string}`, paMemberId)}
-            disabled={isPendingPA || isConfirmingPA || !paWallet || !paMemberId || !paDisclaimer}>
+            disabled={isPendingPA || isConfirmingPA || !paWallet || !paMemberId || !paDisclaimer || !paWalletValid}>
             {isPendingPA || isConfirmingPA ? <CircularProgress size={20} /> : "Assign"}
           </Button>
         </DialogActions>
@@ -215,7 +234,8 @@ function ProgramDetail({ programId }: { programId: number }) {
         <DialogTitle>Add Member</DialogTitle>
         <DialogContent>
           <TextField label="Wallet Address" value={mWallet} onChange={(e) => setMWallet(e.target.value)}
-            fullWidth margin="normal" placeholder="0x..." />
+            fullWidth margin="normal" placeholder="0x..."
+            error={!!mWallet && !mWalletValid} helperText={mWallet && !mWalletValid ? "Invalid wallet address" : ""} />
           <TextField label="Member ID" value={mMemberId} onChange={(e) => setMMemberId(e.target.value)}
             fullWidth margin="normal" inputProps={{ maxLength: 12 }} />
           <FormControl fullWidth margin="normal">
@@ -231,14 +251,14 @@ function ProgramDetail({ programId }: { programId: number }) {
               )}
             </Select>
           </FormControl>
-          {errorM && <Alert severity="error" sx={{ mt: 2 }}>{errorM.message}</Alert>}
+          {errorM && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(errorM)}</Alert>}
           {isSuccessM && <Alert severity="success" sx={{ mt: 2 }}>Member added!</Alert>}
           <OnChainDisclaimer accepted={mDisclaimer} onChange={setMDisclaimer} />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenMember(false)}>Cancel</Button>
           <Button variant="contained" onClick={() => addMember(programId, mWallet as `0x${string}`, mMemberId, mRole)}
-            disabled={isPendingM || isConfirmingM || !mWallet || !mMemberId || !mDisclaimer}>
+            disabled={isPendingM || isConfirmingM || !mWallet || !mMemberId || !mDisclaimer || !mWalletValid}>
             {isPendingM || isConfirmingM ? <CircularProgress size={20} /> : "Add"}
           </Button>
         </DialogActions>
@@ -247,7 +267,7 @@ function ProgramDetail({ programId }: { programId: number }) {
   );
 }
 
-/* ── Program List View ── */
+/* -- Program List View -- */
 
 function ProgramList() {
   const { isAdmin } = useUserRole();
@@ -259,6 +279,14 @@ function ProgramList() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [disclaimer, setDisclaimer] = useState(false);
+
+  // Reset and close dialog on success
+  useEffect(() => {
+    if (isSuccess) {
+      const t = setTimeout(() => { setOpen(false); setCode(""); setName(""); setDescription(""); setDisclaimer(false); }, 1500);
+      return () => clearTimeout(t);
+    }
+  }, [isSuccess]);
 
   const handleCreate = () => {
     if (!code || !name) return;
@@ -312,7 +340,7 @@ function ProgramList() {
             fullWidth margin="normal" />
           <TextField label="Description" value={description} onChange={(e) => setDescription(e.target.value)}
             fullWidth margin="normal" multiline rows={3} />
-          {error && <Alert severity="error" sx={{ mt: 2 }}>{error.message}</Alert>}
+          {error && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(error)}</Alert>}
           {isSuccess && <Alert severity="success" sx={{ mt: 2 }}>Program created!</Alert>}
           <OnChainDisclaimer accepted={disclaimer} onChange={setDisclaimer} />
         </DialogContent>
@@ -327,7 +355,7 @@ function ProgramList() {
   );
 }
 
-/* ── Router: list vs detail based on ?id= ── */
+/* -- Router: list vs detail based on ?id= -- */
 
 function ProgramsContent() {
   const searchParams = useSearchParams();

@@ -1,10 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { useAccount } from "wagmi";
-import { parseUnits } from "viem";
+import { useQueryClient } from "@tanstack/react-query";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, ERC20_ABI } from "@/config/contracts";
-import { toBytes8, toBytes12 } from "@/lib/utils";
+import { toBytes8, toBytes12, safeParseAmount } from "@/lib/utils";
 
 // === READ HOOKS ===
 
@@ -86,9 +87,19 @@ export function useTokenBalance(wallet?: `0x${string}`) {
 
 // === WRITE HOOKS ===
 
+function useRefetchOnSuccess(isSuccess: boolean) {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (isSuccess) {
+      queryClient.invalidateQueries();
+    }
+  }, [isSuccess, queryClient]);
+}
+
 export function useCreateProgram() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
 
   const createProgram = (code: string, name: string, description: string) => {
     writeContract({
@@ -105,6 +116,7 @@ export function useCreateProgram() {
 export function useAssignProgramAdmin() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
 
   const assignProgramAdmin = (programId: number, wallet: `0x${string}`, memberID: string) => {
     writeContract({
@@ -121,6 +133,7 @@ export function useAssignProgramAdmin() {
 export function useAddMember() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
 
   const addMember = (programId: number, wallet: `0x${string}`, memberID: string, role: number) => {
     writeContract({
@@ -137,13 +150,16 @@ export function useAddMember() {
 export function useApproveToken() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
 
   const approve = (amount: string) => {
+    const parsed = safeParseAmount(amount);
+    if (!parsed) return;
     writeContract({
       address: CONTRACTS.fulaToken,
       abi: ERC20_ABI,
       functionName: "approve",
-      args: [CONTRACTS.rewardsProgram, parseUnits(amount, 18)],
+      args: [CONTRACTS.rewardsProgram, parsed],
     });
   };
 
@@ -153,13 +169,16 @@ export function useApproveToken() {
 export function useAddTokens() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
 
   const addTokens = (programId: number, amount: string) => {
+    const parsed = safeParseAmount(amount);
+    if (!parsed) return;
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "addTokens",
-      args: [programId, parseUnits(amount, 18)],
+      args: [programId, parsed],
     });
   };
 
@@ -169,6 +188,7 @@ export function useAddTokens() {
 export function useTransferToSubMember() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
 
   const transfer = (
     programId: number,
@@ -178,11 +198,13 @@ export function useTransferToSubMember() {
     locked: boolean,
     lockTimeDays: number
   ) => {
+    const parsed = safeParseAmount(amount);
+    if (!parsed) return;
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "transferToSubMember",
-      args: [programId, to, parseUnits(amount, 18), note, locked, lockTimeDays],
+      args: [programId, to, parsed, note, locked, lockTimeDays],
     });
   };
 
@@ -192,13 +214,16 @@ export function useTransferToSubMember() {
 export function useTransferToParent() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
 
   const transferBack = (programId: number, to: `0x${string}`, amount: string) => {
+    const parsed = safeParseAmount(amount);
+    if (!parsed) return;
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "transferToParent",
-      args: [programId, to, parseUnits(amount, 18)],
+      args: [programId, to, parsed],
     });
   };
 
@@ -208,13 +233,16 @@ export function useTransferToParent() {
 export function useWithdraw() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
 
   const withdraw = (programId: number, amount: string) => {
+    const parsed = safeParseAmount(amount);
+    if (!parsed) return;
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "withdraw",
-      args: [programId, parseUnits(amount, 18)],
+      args: [programId, parsed],
     });
   };
 
