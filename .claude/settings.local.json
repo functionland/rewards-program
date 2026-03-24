@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /mnt/e/GitHub/fula-chain/ -maxdepth 2 -type f -name *.sol)",
+      "Bash(find /mnt/e/GitHub/fula-chain -type d \\\\\\(-name test* -o -name *test* -o -name tests \\\\\\))",
+      "Bash(grep -n \"upgrades.deployProxy\\\\|upgrades.upgradeProxy\\\\|ERC1967\" /mnt/e/GitHub/fula-chain/scripts/*.ts)",
+      "Bash(find /mnt/e/GitHub/fula-chain/test -type f -name *.ts)",
+      "Bash(npx hardhat:*)",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --no-import-alias --use-npm)",
+      "Bash(npx create-next-app@latest rewards-program-temp --typescript --tailwind --eslint --app --src-dir --no-import-alias --use-npm --turbopack 2)",
+      "Bash(1:*)",
+      "Bash(npm install:*)",
+      "Bash(npx next:*)",
+      "Bash(node -e \"console.log\\(require\\(''next/package.json''\\).version\\)\")",
+      "Bash(ls out/*.html)"
+    ]
+  }
+}
