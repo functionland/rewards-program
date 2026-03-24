@@ -132,7 +132,7 @@ export default function MembersPage() {
           <Typography>Name: {programByCode.name}</Typography>
           <Typography>Description: {programByCode.description}</Typography>
           <Typography>Active: {programByCode.active ? "Yes" : "No"}</Typography>
-          <Button component="a" href={`/programs/${programByCode.id}`} sx={{ mt: 2 }} variant="outlined">
+          <Button component="a" href={`/programs?id=${programByCode.id}`} sx={{ mt: 2 }} variant="outlined">
             View Program Details
           </Button>
         </Paper>

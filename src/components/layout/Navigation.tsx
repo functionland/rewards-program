@@ -5,6 +5,7 @@ import DashboardIcon from "@mui/icons-material/Dashboard";
 import GroupWorkIcon from "@mui/icons-material/GroupWork";
 import PeopleIcon from "@mui/icons-material/People";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -12,10 +13,11 @@ import { useUserRole } from "@/hooks/useUserRole";
 const DRAWER_WIDTH = 240;
 
 const navItems = [
-  { label: "Dashboard", href: "/", icon: <DashboardIcon /> },
-  { label: "Programs", href: "/programs", icon: <GroupWorkIcon /> },
-  { label: "Members", href: "/members", icon: <PeopleIcon /> },
-  { label: "Tokens", href: "/tokens", icon: <AccountBalanceWalletIcon /> },
+  { label: "Dashboard", href: "/", icon: <DashboardIcon />, requiresAuth: false },
+  { label: "Programs", href: "/programs", icon: <GroupWorkIcon />, requiresAuth: false },
+  { label: "Members", href: "/members", icon: <PeopleIcon />, requiresAuth: false },
+  { label: "Tokens", href: "/tokens", icon: <AccountBalanceWalletIcon />, requiresAuth: true },
+  { label: "Balance Lookup", href: "/balance", icon: <ReceiptLongIcon />, requiresAuth: false },
 ];
 
 export function Navigation() {
@@ -50,7 +52,7 @@ export function Navigation() {
               component={Link}
               href={item.href}
               selected={pathname === item.href}
-              disabled={!isConnected}
+              disabled={item.requiresAuth && !isConnected}
             >
               <ListItemIcon>{item.icon}</ListItemIcon>
               <ListItemText primary={item.label} />
