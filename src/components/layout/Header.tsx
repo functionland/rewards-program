@@ -6,7 +6,7 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useUserRole } from "@/hooks/useUserRole";
 
 export function Header({ onMenuToggle }: { onMenuToggle: () => void }) {
-  const { highestRole, isConnected } = useUserRole();
+  const { isAdmin, isConnected } = useUserRole();
 
   return (
     <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: 1, borderColor: "divider" }}>
@@ -24,8 +24,8 @@ export function Header({ onMenuToggle }: { onMenuToggle: () => void }) {
         </Typography>
         {isConnected && (
           <Chip
-            label={highestRole}
-            color={highestRole === "Admin" ? "error" : highestRole === "Member" ? "primary" : "default"}
+            label={isAdmin ? "Admin" : "Member"}
+            color={isAdmin ? "error" : "primary"}
             size="small"
             sx={{ mr: 2 }}
           />

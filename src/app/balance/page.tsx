@@ -10,9 +10,11 @@ import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { useSearchParams } from "next/navigation";
 import { zeroAddress } from "viem";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels } from "@/config/contracts";
-import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatDate, formatContractError } from "@/lib/utils";
-import { useProgramCount, useProgram, useTimeLocks, useDirectChildren, useTransferToParent, useWithdraw, useApproveToken, useAddTokens } from "@/hooks/useRewardsProgram";
+import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatContractError } from "@/lib/utils";
+import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useApproveToken, useAddTokens } from "@/hooks/useRewardsProgram";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
+import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
+import { QRScannerButton } from "@/components/common/QRScannerButton";
 
 /* -- Per-program membership row -- */
 
@@ -32,12 +34,12 @@ function MemberProgramRow({ memberID, programId }: { memberID: string; programId
   const { data: balance } = useReadContract({
     address: CONTRACTS.rewardsProgram,
     abi: REWARDS_PROGRAM_ABI,
-    functionName: "getEffectiveBalance",
+    functionName: "getBalance",
     args: member?.wallet && member.wallet !== zeroAddress ? [programId, member.wallet as `0x${string}`] : undefined,
     query: { enabled: !!member?.wallet && member.wallet !== zeroAddress },
   });
 
-  if (!member || !member.wallet || member.wallet === zeroAddress) return null;
+  if (!member || !member.active) return null;
 
   return (
     <TableRow>
@@ -52,6 +54,9 @@ function MemberProgramRow({ memberID, programId }: { memberID: string; programId
       <TableCell sx={{ color: "error.main" }}>{balance ? formatFula(balance[1]) : "-"}</TableCell>
       <TableCell sx={{ color: "warning.main" }}>{balance ? formatFula(balance[2]) : "-"}</TableCell>
       <TableCell>{member.active ? "Active" : "Inactive"}</TableCell>
+      <TableCell>
+        <QRCodeDisplay programId={programId} memberID={memberID} size={64} />
+      </TableCell>
     </TableRow>
   );
 }
@@ -146,95 +151,6 @@ function OwnerActions({ memberWallet }: { memberWallet: string }) {
   );
 }
 
-/* -- Time Locks detail -- */
-
-function TimeLockDetails({ programId, wallet }: { programId: number; wallet: `0x${string}` }) {
-  const { data: timeLocks } = useTimeLocks(programId, wallet);
-
-  if (!timeLocks || timeLocks.length === 0) return null;
-
-  return (
-    <Box sx={{ mt: 1 }}>
-      {timeLocks.map((lock, i) => (
-        <Typography key={i} variant="body2" color="text.secondary">
-          {formatFula(BigInt(lock.amount))} FULA - unlocks {formatDate(Number(lock.unlockTime))}
-        </Typography>
-      ))}
-    </Box>
-  );
-}
-
-/* -- Sub-member row -- */
-
-function SubMemberRow({ programId, wallet }: { programId: number; wallet: `0x${string}` }) {
-  const { data: member } = useReadContract({
-    address: CONTRACTS.rewardsProgram,
-    abi: REWARDS_PROGRAM_ABI,
-    functionName: "getMember",
-    args: [programId, wallet],
-  });
-  const { data: balance } = useReadContract({
-    address: CONTRACTS.rewardsProgram,
-    abi: REWARDS_PROGRAM_ABI,
-    functionName: "getEffectiveBalance",
-    args: [programId, wallet],
-  });
-
-  if (!member) return null;
-
-  return (
-    <TableRow>
-      <TableCell>{fromBytes12(member.memberID as `0x${string}`)}</TableCell>
-      <TableCell sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}>{shortenAddress(member.wallet)}</TableCell>
-      <TableCell>
-        <Chip label={MemberRoleLabels[Number(member.role)] || "Unknown"} size="small"
-          color={Number(member.role) === 3 ? "primary" : Number(member.role) === 2 ? "secondary" : "default"} />
-      </TableCell>
-      <TableCell sx={{ color: "success.main" }}>{balance ? formatFula(balance[0]) : "-"}</TableCell>
-      <TableCell sx={{ color: "error.main" }}>{balance ? formatFula(balance[1]) : "-"}</TableCell>
-      <TableCell sx={{ color: "warning.main" }}>{balance ? formatFula(balance[2]) : "-"}</TableCell>
-      <TableCell>{member.active ? "Active" : "Inactive"}</TableCell>
-    </TableRow>
-  );
-}
-
-/* -- Sub-members for a program -- */
-
-function SubMembersSection({ programId, wallet }: { programId: number; wallet: `0x${string}` }) {
-  const { data: children } = useDirectChildren(programId, wallet);
-  const { data: program } = useProgram(programId);
-
-  if (!children || children.length === 0) return null;
-
-  return (
-    <Box sx={{ mt: 2 }}>
-      <Typography variant="subtitle2" gutterBottom>
-        Sub-members in {program ? program.name : `Program #${programId}`}
-      </Typography>
-      <TableContainer>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Member ID</TableCell>
-              <TableCell>Wallet</TableCell>
-              <TableCell>Role</TableCell>
-              <TableCell>Withdrawable</TableCell>
-              <TableCell>Locked</TableCell>
-              <TableCell>Time-Locked</TableCell>
-              <TableCell>Status</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {children.map((child) => (
-              <SubMemberRow key={child} programId={programId} wallet={child as `0x${string}`} />
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Box>
-  );
-}
-
 /* -- Main balance view -- */
 
 function BalanceContent() {
@@ -274,8 +190,27 @@ function BalanceContent() {
     }
   }
 
+  // Check if member exists in any program (even walletless)
+  let memberExists = false;
+  if (multicallResults) {
+    for (const result of multicallResults) {
+      if (result.status === "success" && result.result) {
+        const member = result.result as { active: boolean };
+        if (member.active) {
+          memberExists = true;
+          break;
+        }
+      }
+    }
+  }
+
   const handleSearch = () => {
     setSearchID(memberID);
+  };
+
+  const handleQRScan = ({ programId: _p, memberID: m }: { programId: number; memberID: string }) => {
+    setMemberID(m);
+    setSearchID(m);
   };
 
   return (
@@ -291,6 +226,10 @@ function BalanceContent() {
             sx={{ flexGrow: 1 }}
             inputProps={{ maxLength: 12 }}
             placeholder="Enter member ID..."
+          />
+          <QRScannerButton
+            tooltip="Scan member QR to search"
+            onScan={handleQRScan}
           />
           <Button variant="contained" onClick={handleSearch} disabled={!memberID}>
             Look Up
@@ -308,16 +247,20 @@ function BalanceContent() {
             </Paper>
           )}
 
-          {!memberWallet && (
+          {!memberExists && (
             <Alert severity="warning" sx={{ mb: 3 }}>No member found with ID &quot;{searchID}&quot; in any program.</Alert>
           )}
 
-          {memberWallet && (
+          {memberExists && !memberWallet && (
+            <Alert severity="info" sx={{ mb: 3 }}>Member &quot;{searchID}&quot; exists but has no linked wallet (walletless member).</Alert>
+          )}
+
+          {memberExists && (
             <>
               <Paper sx={{ p: 2 }}>
                 <Typography variant="h6" gutterBottom>Programs & Balances for &quot;{searchID}&quot;</Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
-                  Balance columns: Withdrawable / Permanently Locked / Time-Locked (FULA)
+                  Balance columns: Available / Permanently Locked / Time-Locked (FULA)
                 </Typography>
                 <TableContainer>
                   <Table size="small">
@@ -327,10 +270,11 @@ function BalanceContent() {
                         <TableCell>Code</TableCell>
                         <TableCell>Role</TableCell>
                         <TableCell>Parent</TableCell>
-                        <TableCell>Withdrawable</TableCell>
+                        <TableCell>Available</TableCell>
                         <TableCell>Locked</TableCell>
                         <TableCell>Time-Locked</TableCell>
                         <TableCell>Status</TableCell>
+                        <TableCell>QR</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -342,15 +286,7 @@ function BalanceContent() {
                 </TableContainer>
               </Paper>
 
-              {/* Sub-members per program */}
-              <Paper sx={{ p: 2, mt: 3 }}>
-                <Typography variant="h6" gutterBottom>Sub-Members</Typography>
-                {Array.from({ length: count }, (_, i) => (
-                  <SubMembersSection key={i + 1} programId={i + 1} wallet={memberWallet as `0x${string}`} />
-                ))}
-              </Paper>
-
-              <OwnerActions memberWallet={memberWallet} />
+              {memberWallet && <OwnerActions memberWallet={memberWallet} />}
             </>
           )}
         </>

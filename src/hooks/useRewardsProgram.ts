@@ -31,47 +31,9 @@ export function useMemberBalance(programId: number, wallet?: `0x${string}`) {
   return useReadContract({
     address: CONTRACTS.rewardsProgram,
     abi: REWARDS_PROGRAM_ABI,
-    functionName: "getEffectiveBalance",
+    functionName: "getBalance",
     args: wallet ? [programId, wallet] : undefined,
     query: { enabled: !!wallet && programId > 0 },
-  });
-}
-
-export function useDirectChildren(programId: number, wallet?: `0x${string}`) {
-  return useReadContract({
-    address: CONTRACTS.rewardsProgram,
-    abi: REWARDS_PROGRAM_ABI,
-    functionName: "getDirectChildren",
-    args: wallet ? [programId, wallet] : undefined,
-    query: { enabled: !!wallet && programId > 0 },
-  });
-}
-
-export function useTimeLocks(programId: number, wallet?: `0x${string}`) {
-  return useReadContract({
-    address: CONTRACTS.rewardsProgram,
-    abi: REWARDS_PROGRAM_ABI,
-    functionName: "getTimeLocks",
-    args: wallet ? [programId, wallet] : undefined,
-    query: { enabled: !!wallet && programId > 0 },
-  });
-}
-
-export function useTransferCount() {
-  return useReadContract({
-    address: CONTRACTS.rewardsProgram,
-    abi: REWARDS_PROGRAM_ABI,
-    functionName: "transferCount",
-  });
-}
-
-export function useTransferRecord(id: number) {
-  return useReadContract({
-    address: CONTRACTS.rewardsProgram,
-    abi: REWARDS_PROGRAM_ABI,
-    functionName: "getTransferRecord",
-    args: [BigInt(id)],
-    query: { enabled: id > 0 },
   });
 }
 
@@ -82,6 +44,16 @@ export function useTokenBalance(wallet?: `0x${string}`) {
     functionName: "balanceOf",
     args: wallet ? [wallet] : undefined,
     query: { enabled: !!wallet },
+  });
+}
+
+export function useProgramCodeToId(code: string) {
+  return useReadContract({
+    address: CONTRACTS.rewardsProgram,
+    abi: REWARDS_PROGRAM_ABI,
+    functionName: "programCodeToId",
+    args: code ? [toBytes8(code)] : undefined,
+    query: { enabled: !!code },
   });
 }
 
@@ -118,12 +90,12 @@ export function useAssignProgramAdmin() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   useRefetchOnSuccess(isSuccess);
 
-  const assignProgramAdmin = (programId: number, wallet: `0x${string}`, memberID: string) => {
+  const assignProgramAdmin = (programId: number, wallet: `0x${string}`, memberID: string, editCodeHash: `0x${string}` = "0x0000000000000000000000000000000000000000000000000000000000000000") => {
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "assignProgramAdmin",
-      args: [programId, wallet, toBytes12(memberID)],
+      args: [programId, wallet, toBytes12(memberID), editCodeHash],
     });
   };
 
@@ -135,12 +107,12 @@ export function useAddMember() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   useRefetchOnSuccess(isSuccess);
 
-  const addMember = (programId: number, wallet: `0x${string}`, memberID: string, role: number) => {
+  const addMember = (programId: number, wallet: `0x${string}`, memberID: string, role: number, editCodeHash: `0x${string}` = "0x0000000000000000000000000000000000000000000000000000000000000000") => {
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "addMember",
-      args: [programId, wallet, toBytes12(memberID), role],
+      args: [programId, wallet, toBytes12(memberID), role, editCodeHash],
     });
   };
 
@@ -194,7 +166,6 @@ export function useTransferToSubMember() {
     programId: number,
     to: `0x${string}`,
     amount: string,
-    note: string,
     locked: boolean,
     lockTimeDays: number
   ) => {
@@ -204,7 +175,7 @@ export function useTransferToSubMember() {
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "transferToSubMember",
-      args: [programId, to, parsed, note, locked, lockTimeDays],
+      args: [programId, to, parsed, locked, lockTimeDays],
     });
   };
 
@@ -247,4 +218,55 @@ export function useWithdraw() {
   };
 
   return { withdraw, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useClaimMember() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const claimMember = (programId: number, memberID: string, editCode: `0x${string}`) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "claimMember",
+      args: [programId, toBytes12(memberID), editCode],
+    });
+  };
+
+  return { claimMember, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useSetMemberWallet() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const setMemberWallet = (programId: number, memberID: string, newWallet: `0x${string}`) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "setMemberWallet",
+      args: [programId, toBytes12(memberID), newWallet],
+    });
+  };
+
+  return { setMemberWallet, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useRemoveMember() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const removeMember = (programId: number, memberKey: `0x${string}`) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "removeMember",
+      args: [programId, memberKey],
+    });
+  };
+
+  return { removeMember, isPending, isConfirming, isSuccess, error, hash };
 }

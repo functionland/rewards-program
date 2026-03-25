@@ -9,6 +9,9 @@ import {
 import { useReadContract } from "wagmi";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels } from "@/config/contracts";
 import { toBytes12, toBytes8, fromBytes12, shortenAddress, formatFula } from "@/lib/utils";
+import { useProgramCodeToId } from "@/hooks/useRewardsProgram";
+import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
+import { QRScannerButton } from "@/components/common/QRScannerButton";
 
 export default function MembersPage() {
   const [searchType, setSearchType] = useState<"memberID" | "programCode">("memberID");
@@ -27,22 +30,25 @@ export default function MembersPage() {
     query: { enabled: searchTriggered && searchType === "memberID" && !!searchValue && !!programId },
   });
 
-  // Search by program code
-  const { data: programByCode, error: programError } = useReadContract({
+  // Search by program code → get programId
+  const { data: programIdByCode, error: programError } = useProgramCodeToId(
+    searchTriggered && searchType === "programCode" ? searchValue : ""
+  );
+
+  // Get program details for program code search
+  const { data: programByCode } = useReadContract({
     address: CONTRACTS.rewardsProgram,
     abi: REWARDS_PROGRAM_ABI,
-    functionName: "getProgramByCode",
-    args: searchTriggered && searchType === "programCode" && searchValue
-      ? [toBytes8(searchValue)]
-      : undefined,
-    query: { enabled: searchTriggered && searchType === "programCode" && !!searchValue },
+    functionName: "getProgram",
+    args: programIdByCode && Number(programIdByCode) > 0 ? [Number(programIdByCode)] : undefined,
+    query: { enabled: !!programIdByCode && Number(programIdByCode) > 0 },
   });
 
   // Get balance for found member
   const { data: balance } = useReadContract({
     address: CONTRACTS.rewardsProgram,
     abi: REWARDS_PROGRAM_ABI,
-    functionName: "getEffectiveBalance",
+    functionName: "getBalance",
     args: memberByID?.wallet && memberByID.wallet !== "0x0000000000000000000000000000000000000000"
       ? [Number(memberByID.programId), memberByID.wallet as `0x${string}`]
       : undefined,
@@ -52,6 +58,16 @@ export default function MembersPage() {
   const handleSearch = () => {
     setSearchTriggered(true);
   };
+
+  const handleQRScan = ({ programId: p, memberID }: { programId: number; memberID: string }) => {
+    setSearchType("memberID");
+    setSearchValue(memberID);
+    setProgramId(String(p));
+    setSearchTriggered(true);
+  };
+
+  const memberIdStr = memberByID ? fromBytes12(memberByID.memberID as `0x${string}`) : "";
+  const memberProgramId = memberByID ? Number(memberByID.programId) : 0;
 
   return (
     <Box>
@@ -85,14 +101,18 @@ export default function MembersPage() {
               sx={{ width: 150 }}
             />
           )}
+          <QRScannerButton
+            tooltip="Scan member QR to search"
+            onScan={handleQRScan}
+          />
           <Button variant="contained" onClick={handleSearch} disabled={!searchValue}>
             Search
           </Button>
         </Box>
       </Paper>
 
-      {/* Results */}
-      {searchTriggered && searchType === "memberID" && memberByID && memberByID.wallet !== "0x0000000000000000000000000000000000000000" && (
+      {/* Results - Member by ID */}
+      {searchTriggered && searchType === "memberID" && memberByID && memberByID.active && (
         <TableContainer component={Paper}>
           <Table>
             <TableHead>
@@ -104,12 +124,17 @@ export default function MembersPage() {
                 <TableCell>Parent</TableCell>
                 <TableCell>Balance (FULA)</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell>QR</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               <TableRow>
-                <TableCell>{fromBytes12(memberByID.memberID as `0x${string}`)}</TableCell>
-                <TableCell sx={{ fontFamily: "monospace" }}>{shortenAddress(memberByID.wallet)}</TableCell>
+                <TableCell>{memberIdStr}</TableCell>
+                <TableCell sx={{ fontFamily: "monospace" }}>
+                  {memberByID.wallet === "0x0000000000000000000000000000000000000000"
+                    ? "Walletless"
+                    : shortenAddress(memberByID.wallet)}
+                </TableCell>
                 <TableCell>
                   <Chip label={MemberRoleLabels[Number(memberByID.role)]} size="small" />
                 </TableCell>
@@ -119,13 +144,17 @@ export default function MembersPage() {
                   {balance ? `${formatFula(balance[0])} / ${formatFula(balance[1])} / ${formatFula(balance[2])}` : "-"}
                 </TableCell>
                 <TableCell>{memberByID.active ? "Active" : "Inactive"}</TableCell>
+                <TableCell>
+                  <QRCodeDisplay programId={memberProgramId} memberID={memberIdStr} size={64} />
+                </TableCell>
               </TableRow>
             </TableBody>
           </Table>
         </TableContainer>
       )}
 
-      {searchTriggered && searchType === "programCode" && programByCode && (
+      {/* Results - Program by code */}
+      {searchTriggered && searchType === "programCode" && programByCode && Number(programIdByCode) > 0 && (
         <Paper sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom>Program Found</Typography>
           <Typography>ID: {programByCode.id}</Typography>
@@ -138,10 +167,10 @@ export default function MembersPage() {
         </Paper>
       )}
 
-      {searchTriggered && memberError && (
+      {searchTriggered && searchType === "memberID" && memberError && (
         <Alert severity="warning" sx={{ mt: 2 }}>No member found with that ID in the specified program.</Alert>
       )}
-      {searchTriggered && programError && (
+      {searchTriggered && searchType === "programCode" && (programError || (programIdByCode !== undefined && Number(programIdByCode) === 0)) && (
         <Alert severity="warning" sx={{ mt: 2 }}>No program found with that code.</Alert>
       )}
     </Box>

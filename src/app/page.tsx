@@ -8,7 +8,7 @@ import { formatFula } from "@/lib/utils";
 
 export default function Dashboard() {
   const { address } = useAccount();
-  const { isAdmin, memberPrograms, isConnected } = useUserRole();
+  const { isAdmin, isConnected } = useUserRole();
   const { data: programCount } = useProgramCount();
   const { data: walletBalance } = useTokenBalance(address);
 
@@ -38,13 +38,6 @@ export default function Dashboard() {
 
         {isConnected && (
           <>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 3, textAlign: "center" }}>
-                <Typography color="text.secondary" variant="body2">Your Programs</Typography>
-                <Typography variant="h3">{isAdmin ? "All" : memberPrograms.length.toString()}</Typography>
-              </Paper>
-            </Grid>
-
             <Grid item xs={12} sm={6} md={3}>
               <Paper sx={{ p: 3, textAlign: "center" }}>
                 <Typography color="text.secondary" variant="body2">Wallet FULA</Typography>

@@ -17,7 +17,8 @@
       "Bash(find /mnt/e/GitHub/rewards-program/src -type f \\\\\\(-name *.ts -o -name *.tsx \\\\\\))",
       "Bash(find /mnt/e/GitHub/rewards-program/src -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))",
       "Bash(xargs ls:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(node:*)"
     ]
   }
 }

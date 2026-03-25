@@ -13,12 +13,13 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useUserRole, useMemberRole } from "@/hooks/useUserRole";
 import {
-  useProgramCount, useProgram, useCreateProgram, useDirectChildren,
+  useProgramCount, useProgram, useCreateProgram,
   useAssignProgramAdmin, useAddMember, useMemberBalance,
 } from "@/hooks/useRewardsProgram";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberRoleEnum } from "@/config/contracts";
 import { fromBytes8, fromBytes12, shortenAddress, formatFula, isValidAddress, formatContractError } from "@/lib/utils";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
+import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
 
 /* -- Program List Row -- */
 
@@ -53,15 +54,17 @@ function MemberRow({ programId, wallet }: { programId: number; wallet: `0x${stri
   const { data: balance } = useReadContract({
     address: CONTRACTS.rewardsProgram,
     abi: REWARDS_PROGRAM_ABI,
-    functionName: "getEffectiveBalance",
+    functionName: "getBalance",
     args: [programId, wallet],
   });
 
   if (!member) return null;
 
+  const memberIdStr = fromBytes12(member.memberID as `0x${string}`);
+
   return (
     <TableRow hover>
-      <TableCell>{fromBytes12(member.memberID as `0x${string}`)}</TableCell>
+      <TableCell>{memberIdStr}</TableCell>
       <TableCell sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}>{shortenAddress(member.wallet)}</TableCell>
       <TableCell>
         <Chip
@@ -75,6 +78,9 @@ function MemberRow({ programId, wallet }: { programId: number; wallet: `0x${stri
         {balance ? `${formatFula(balance[0])} / ${formatFula(balance[1])} / ${formatFula(balance[2])}` : "-"}
       </TableCell>
       <TableCell>{member.active ? "Active" : "Inactive"}</TableCell>
+      <TableCell>
+        <QRCodeDisplay programId={programId} memberID={memberIdStr} size={64} />
+      </TableCell>
     </TableRow>
   );
 }
@@ -86,7 +92,6 @@ function ProgramDetail({ programId }: { programId: number }) {
   const { isAdmin } = useUserRole();
   const { role } = useMemberRole(programId);
   const { data: program } = useProgram(programId);
-  const { data: children } = useDirectChildren(programId, address);
   const { data: myBalance } = useMemberBalance(programId, address);
 
   const { assignProgramAdmin, isPending: isPendingPA, isConfirming: isConfirmingPA, isSuccess: isSuccessPA, error: errorPA } = useAssignProgramAdmin();
@@ -158,7 +163,7 @@ function ProgramDetail({ programId }: { programId: number }) {
           <Typography variant="h6" gutterBottom>My Balance in this Program</Typography>
           <Grid container spacing={2}>
             <Grid item xs={4}>
-              <Typography color="text.secondary" variant="body2">Withdrawable</Typography>
+              <Typography color="text.secondary" variant="body2">Available</Typography>
               <Typography variant="h6" color="success.main">{formatFula(myBalance[0])} FULA</Typography>
             </Grid>
             <Grid item xs={4}>
@@ -174,12 +179,13 @@ function ProgramDetail({ programId }: { programId: number }) {
       )}
 
       <Paper sx={{ p: 2 }}>
-        <Typography variant="h6" gutterBottom>
-          {isAdmin ? "All Members" : "My Sub-Members"}
-        </Typography>
+        <Typography variant="h6" gutterBottom>Members</Typography>
         <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
-          Balance format: Withdrawable / Locked / Time-Locked
+          Balance format: Available / Locked / Time-Locked
         </Typography>
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Use the Members search page to look up specific members by ID.
+        </Alert>
         <TableContainer>
           <Table size="small">
             <TableHead>
@@ -190,18 +196,17 @@ function ProgramDetail({ programId }: { programId: number }) {
                 <TableCell>Parent</TableCell>
                 <TableCell>Balance (FULA)</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell>QR</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {children && children.length > 0 ? (
-                children.map((child) => (
-                  <MemberRow key={child} programId={programId} wallet={child as `0x${string}`} />
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={6} align="center">No sub-members found.</TableCell>
-                </TableRow>
-              )}
+              <TableRow>
+                <TableCell colSpan={7} align="center">
+                  <Typography variant="body2" color="text.secondary">
+                    Search for members on the Members page by their Member ID.
+                  </Typography>
+                </TableCell>
+              </TableRow>
             </TableBody>
           </Table>
         </TableContainer>
@@ -211,9 +216,9 @@ function ProgramDetail({ programId }: { programId: number }) {
       <Dialog open={openPA} onClose={() => setOpenPA(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Assign Program Admin</DialogTitle>
         <DialogContent>
-          <TextField label="Wallet Address" value={paWallet} onChange={(e) => setPaWallet(e.target.value)}
+          <TextField label="Wallet Address (leave empty for walletless)" value={paWallet} onChange={(e) => setPaWallet(e.target.value)}
             fullWidth margin="normal" placeholder="0x..."
-            error={!!paWallet && !paWalletValid} helperText={paWallet && !paWalletValid ? "Invalid wallet address" : ""} />
+            error={!!paWallet && !paWalletValid} helperText={paWallet && !paWalletValid ? "Invalid wallet address" : "Leave empty to create walletless member"} />
           <TextField label="Member ID" value={paMemberId} onChange={(e) => setPaMemberId(e.target.value)}
             fullWidth margin="normal" inputProps={{ maxLength: 12 }} />
           {errorPA && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(errorPA)}</Alert>}
@@ -222,8 +227,9 @@ function ProgramDetail({ programId }: { programId: number }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenPA(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => assignProgramAdmin(programId, paWallet as `0x${string}`, paMemberId)}
-            disabled={isPendingPA || isConfirmingPA || !paWallet || !paMemberId || !paDisclaimer || !paWalletValid}>
+          <Button variant="contained"
+            onClick={() => assignProgramAdmin(programId, (paWallet || "0x0000000000000000000000000000000000000000") as `0x${string}`, paMemberId)}
+            disabled={isPendingPA || isConfirmingPA || !paMemberId || !paDisclaimer || (!!paWallet && !paWalletValid)}>
             {isPendingPA || isConfirmingPA ? <CircularProgress size={20} /> : "Assign"}
           </Button>
         </DialogActions>
@@ -233,9 +239,9 @@ function ProgramDetail({ programId }: { programId: number }) {
       <Dialog open={openMember} onClose={() => setOpenMember(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add Member</DialogTitle>
         <DialogContent>
-          <TextField label="Wallet Address" value={mWallet} onChange={(e) => setMWallet(e.target.value)}
+          <TextField label="Wallet Address (leave empty for walletless)" value={mWallet} onChange={(e) => setMWallet(e.target.value)}
             fullWidth margin="normal" placeholder="0x..."
-            error={!!mWallet && !mWalletValid} helperText={mWallet && !mWalletValid ? "Invalid wallet address" : ""} />
+            error={!!mWallet && !mWalletValid} helperText={mWallet && !mWalletValid ? "Invalid wallet address" : "Leave empty to create walletless member"} />
           <TextField label="Member ID" value={mMemberId} onChange={(e) => setMMemberId(e.target.value)}
             fullWidth margin="normal" inputProps={{ maxLength: 12 }} />
           <FormControl fullWidth margin="normal">
@@ -257,8 +263,9 @@ function ProgramDetail({ programId }: { programId: number }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenMember(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => addMember(programId, mWallet as `0x${string}`, mMemberId, mRole)}
-            disabled={isPendingM || isConfirmingM || !mWallet || !mMemberId || !mDisclaimer || !mWalletValid}>
+          <Button variant="contained"
+            onClick={() => addMember(programId, (mWallet || "0x0000000000000000000000000000000000000000") as `0x${string}`, mMemberId, mRole)}
+            disabled={isPendingM || isConfirmingM || !mMemberId || !mDisclaimer || (!!mWallet && !mWalletValid)}>
             {isPendingM || isConfirmingM ? <CircularProgress size={20} /> : "Add"}
           </Button>
         </DialogActions>

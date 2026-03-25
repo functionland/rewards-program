@@ -3,37 +3,23 @@
 import { useState } from "react";
 import {
   Typography, Box, Paper, TextField, Button, Grid, Tabs, Tab,
-  Alert, CircularProgress, FormControlLabel, Checkbox, Table,
-  TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Alert, CircularProgress, FormControlLabel, Checkbox,
 } from "@mui/material";
 import { useAccount } from "wagmi";
+import { readContract } from "wagmi/actions";
 import { zeroAddress } from "viem";
 import {
   useApproveToken, useAddTokens, useTransferToSubMember, useTransferToParent,
-  useWithdraw, useMemberBalance, useTimeLocks, useTokenBalance, useTransferCount,
-  useTransferRecord,
+  useWithdraw, useMemberBalance, useTokenBalance,
 } from "@/hooks/useRewardsProgram";
-import { formatFula, formatDate, isValidAddress, formatContractError } from "@/lib/utils";
+import { formatFula, toBytes12, isValidAddress, formatContractError } from "@/lib/utils";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
+import { QRScannerButton } from "@/components/common/QRScannerButton";
+import { CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
+import { wagmiConfig } from "@/lib/wagmi";
 
 function TabPanel({ children, value, index }: { children: React.ReactNode; value: number; index: number }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
-}
-
-function RecentTransfer({ id }: { id: number }) {
-  const { data: record } = useTransferRecord(id);
-  if (!record) return null;
-  return (
-    <TableRow>
-      <TableCell>{record.id.toString()}</TableCell>
-      <TableCell>{record.from.slice(0, 8)}...</TableCell>
-      <TableCell>{record.to.slice(0, 8)}...</TableCell>
-      <TableCell>{formatFula(record.amount)}</TableCell>
-      <TableCell>{record.locked ? "Locked" : record.lockTimeDays > 0 ? `${record.lockTimeDays}d` : "Free"}</TableCell>
-      <TableCell>{record.note.slice(0, 30)}{record.note.length > 30 ? "..." : ""}</TableCell>
-      <TableCell>{formatDate(Number(record.timestamp))}</TableCell>
-    </TableRow>
-  );
 }
 
 export default function TokensPage() {
@@ -43,10 +29,8 @@ export default function TokensPage() {
   const pid = parseInt(programId) || 0;
 
   // Balance
-  const { data: effectiveBalance } = useMemberBalance(pid, address);
-  const { data: timeLocks } = useTimeLocks(pid, address);
+  const { data: balance } = useMemberBalance(pid, address);
   const { data: walletBalance } = useTokenBalance(address);
-  const { data: transferCount } = useTransferCount();
 
   // Deposit state
   const [depositAmount, setDepositAmount] = useState("");
@@ -57,10 +41,10 @@ export default function TokensPage() {
   // Transfer state
   const [transferTo, setTransferTo] = useState("");
   const [transferAmount, setTransferAmount] = useState("");
-  const [transferNote, setTransferNote] = useState("");
-  const [transferLocked, setTransferLocked] = useState(false);
+  const [transferLocked, setTransferLocked] = useState(true);
   const [transferLockDays, setTransferLockDays] = useState("0");
   const [transferDisclaimer, setTransferDisclaimer] = useState(false);
+  const [scanInfo, setScanInfo] = useState("");
   const { transfer, isPending: isTransferring, isConfirming: isTransConfirming, isSuccess: transferSuccess, error: transferError } = useTransferToSubMember();
 
   // Transfer back state
@@ -75,6 +59,29 @@ export default function TokensPage() {
   const { withdraw, isPending: isWithdrawing, isConfirming: isWithConfirming, isSuccess: withdrawSuccess, error: withdrawError } = useWithdraw();
 
   const transferToValid = !transferTo || isValidAddress(transferTo);
+
+  const handleQRScan = async ({ programId: p, memberID }: { programId: number; memberID: string }) => {
+    setProgramId(String(p));
+    setScanInfo(`Scanned: ${memberID} (Program ${p})`);
+    setTab(1); // Switch to Transfer tab
+
+    try {
+      const member = await readContract(wagmiConfig, {
+        address: CONTRACTS.rewardsProgram,
+        abi: REWARDS_PROGRAM_ABI,
+        functionName: "getMemberByID",
+        args: [toBytes12(memberID), p],
+      });
+      if (member && member.wallet && member.wallet !== zeroAddress) {
+        setTransferTo(member.wallet);
+        setScanInfo(`Scanned: ${memberID} (Program ${p}) - wallet found`);
+      } else {
+        setScanInfo(`Scanned: ${memberID} (Program ${p}) - walletless member, enter storageKey manually`);
+      }
+    } catch {
+      setScanInfo(`Scanned: ${memberID} (Program ${p}) - member not found`);
+    }
+  };
 
   // Wallet guard
   if (!address) {
@@ -96,7 +103,7 @@ export default function TokensPage() {
       </Box>
 
       {/* Balance Display */}
-      {effectiveBalance && (
+      {balance && (
         <Paper sx={{ p: 2, mb: 3 }}>
           <Typography variant="h6" gutterBottom>Balance in Program {programId}</Typography>
           <Grid container spacing={2}>
@@ -105,28 +112,18 @@ export default function TokensPage() {
               <Typography variant="h6">{walletBalance ? formatFula(walletBalance) : "0"}</Typography>
             </Grid>
             <Grid item xs={3}>
-              <Typography variant="body2" color="text.secondary">Withdrawable</Typography>
-              <Typography variant="h6" color="success.main">{formatFula(effectiveBalance[0])}</Typography>
+              <Typography variant="body2" color="text.secondary">Available</Typography>
+              <Typography variant="h6" color="success.main">{formatFula(balance[0])}</Typography>
             </Grid>
             <Grid item xs={3}>
               <Typography variant="body2" color="text.secondary">Permanently Locked</Typography>
-              <Typography variant="h6" color="error.main">{formatFula(effectiveBalance[1])}</Typography>
+              <Typography variant="h6" color="error.main">{formatFula(balance[1])}</Typography>
             </Grid>
             <Grid item xs={3}>
               <Typography variant="body2" color="text.secondary">Time-Locked</Typography>
-              <Typography variant="h6" color="warning.main">{formatFula(effectiveBalance[2])}</Typography>
+              <Typography variant="h6" color="warning.main">{formatFula(balance[2])}</Typography>
             </Grid>
           </Grid>
-          {timeLocks && timeLocks.length > 0 && (
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="body2" color="text.secondary" gutterBottom>Time Lock Details:</Typography>
-              {timeLocks.map((lock, i) => (
-                <Typography key={i} variant="body2">
-                  {formatFula(BigInt(lock.amount))} FULA - unlocks {formatDate(Number(lock.unlockTime))}
-                </Typography>
-              ))}
-            </Box>
-          )}
         </Paper>
       )}
 
@@ -136,7 +133,6 @@ export default function TokensPage() {
           <Tab label="Transfer to Sub-Member" />
           <Tab label="Transfer to Parent" />
           <Tab label="Withdraw" />
-          <Tab label="History" />
         </Tabs>
 
         {/* DEPOSIT */}
@@ -164,13 +160,18 @@ export default function TokensPage() {
 
         {/* TRANSFER TO SUB-MEMBER */}
         <TabPanel value={tab} index={1}>
-          <TextField label="Recipient Wallet" value={transferTo} onChange={(e) => setTransferTo(e.target.value)}
-            fullWidth margin="normal" placeholder="0x..."
-            error={!!transferTo && !transferToValid} helperText={transferTo && !transferToValid ? "Invalid wallet address" : ""} />
+          {scanInfo && <Alert severity="info" sx={{ mb: 2 }}>{scanInfo}</Alert>}
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <TextField label="Recipient Wallet" value={transferTo} onChange={(e) => setTransferTo(e.target.value)}
+              fullWidth margin="normal" placeholder="0x..."
+              error={!!transferTo && !transferToValid} helperText={transferTo && !transferToValid ? "Invalid wallet address" : ""} />
+            <QRScannerButton
+              tooltip="Scan member QR to auto-fill recipient"
+              onScan={handleQRScan}
+            />
+          </Box>
           <TextField label="Amount (FULA)" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value)}
             fullWidth margin="normal" type="number" />
-          <TextField label="Note" value={transferNote} onChange={(e) => setTransferNote(e.target.value)}
-            fullWidth margin="normal" multiline rows={2} inputProps={{ maxLength: 256 }} helperText={`${transferNote.length}/256`} />
           <Grid container spacing={2}>
             <Grid item xs={6}>
               <FormControlLabel control={<Checkbox checked={transferLocked} onChange={(e) => setTransferLocked(e.target.checked)} />}
@@ -184,7 +185,7 @@ export default function TokensPage() {
           </Grid>
           <OnChainDisclaimer accepted={transferDisclaimer} onChange={setTransferDisclaimer} />
           <Button variant="contained" sx={{ mt: 2 }}
-            onClick={() => transfer(pid, transferTo as `0x${string}`, transferAmount, transferNote, transferLocked, parseInt(transferLockDays))}
+            onClick={() => transfer(pid, transferTo as `0x${string}`, transferAmount, transferLocked, parseInt(transferLockDays))}
             disabled={isTransferring || isTransConfirming || !transferTo || !transferAmount || !transferDisclaimer || !transferToValid}>
             {isTransferring || isTransConfirming ? <CircularProgress size={20} /> : "Transfer"}
           </Button>
@@ -226,40 +227,6 @@ export default function TokensPage() {
           </Button>
           {withdrawSuccess && <Alert severity="success" sx={{ mt: 2 }}>Withdrawal successful!</Alert>}
           {withdrawError && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(withdrawError)}</Alert>}
-        </TabPanel>
-
-        {/* HISTORY */}
-        <TabPanel value={tab} index={4}>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Recent transfers (showing last 10)
-          </Typography>
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>ID</TableCell>
-                  <TableCell>From</TableCell>
-                  <TableCell>To</TableCell>
-                  <TableCell>Amount</TableCell>
-                  <TableCell>Lock</TableCell>
-                  <TableCell>Note</TableCell>
-                  <TableCell>Date</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {transferCount && Number(transferCount) > 0 ? (
-                  Array.from(
-                    { length: Math.min(10, Number(transferCount)) },
-                    (_, i) => Number(transferCount) - i
-                  ).map((id) => <RecentTransfer key={id} id={id} />)
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={7} align="center">No transfers yet.</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
         </TabPanel>
       </Paper>
     </Box>

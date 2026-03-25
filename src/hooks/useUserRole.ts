@@ -1,6 +1,6 @@
 "use client";
 
-import { useReadContract, useReadContracts } from "wagmi";
+import { useReadContract } from "wagmi";
 import { useAccount } from "wagmi";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, ADMIN_ROLE, MemberRoleLabels } from "@/config/contracts";
 
@@ -15,20 +15,8 @@ export function useUserRole() {
     query: { enabled: !!address },
   });
 
-  const { data: memberPrograms } = useReadContract({
-    address: CONTRACTS.rewardsProgram,
-    abi: REWARDS_PROGRAM_ABI,
-    functionName: "getMemberPrograms",
-    args: address ? [address] : undefined,
-    query: { enabled: !!address },
-  });
-
-  const highestRole = isAdmin ? "Admin" : (memberPrograms && memberPrograms.length > 0 ? "Member" : "None");
-
   return {
     isAdmin: !!isAdmin,
-    memberPrograms: memberPrograms || [],
-    highestRole,
     isConnected: !!address,
   };
 }
