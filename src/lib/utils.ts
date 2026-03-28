@@ -84,6 +84,8 @@ const ERROR_MAP: Record<string, string> = {
   InvalidMemberType: "Invalid member type.",
   InvalidRewardType: "Invalid reward type.",
   InvalidSubTypeData: "Invalid sub-type data.",
+  TransferExceedsLimit: "Transfer amount exceeds the program's transfer control limit.",
+  InvalidTransferLimit: "Transfer limit must be between 0 and 100.",
   InvalidAddress: "Invalid address provided.",
 };
 

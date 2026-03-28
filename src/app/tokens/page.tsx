@@ -11,7 +11,7 @@ import { readContract } from "wagmi/actions";
 import { zeroAddress } from "viem";
 import {
   useApproveToken, useAddTokens, useTransferToSubMember, useTransferToParent,
-  useWithdraw, useMemberBalance, useTokenBalance, useRewardTypes,
+  useWithdraw, useMemberBalance, useTokenBalance, useRewardTypes, useTransferLimit,
 } from "@/hooks/useRewardsProgram";
 import { formatFula, toBytes12, isValidAddress, formatContractError, fromBytes16 } from "@/lib/utils";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
@@ -35,6 +35,9 @@ export default function TokensPage() {
 
   // Reward types
   const { data: rewardTypesData } = useRewardTypes();
+
+  // Transfer limit
+  const { data: transferLimitData } = useTransferLimit(pid);
 
   // Deposit state
   const [depositAmount, setDepositAmount] = useState("");
@@ -219,6 +222,14 @@ export default function TokensPage() {
           <Typography variant="body2" color="text.secondary" gutterBottom>
             Leave wallet empty to transfer to your direct parent.
           </Typography>
+          {transferLimitData != null && Number(transferLimitData) > 0 && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              This program limits Client transfers to <strong>{Number(transferLimitData)}%</strong> of total balance.
+              {balance && (
+                <> Your max transferable: <strong>{formatFula((balance[0] + balance[1] + balance[2]) * BigInt(Number(transferLimitData)) / BigInt(100))} FULA</strong></>
+              )}
+            </Alert>
+          )}
           <TextField label="Parent Wallet (optional)" value={parentTo} onChange={(e) => setParentTo(e.target.value)}
             fullWidth margin="normal" placeholder="0x... (leave empty for direct parent)" />
           <TextField label="Amount (FULA)" value={parentAmount} onChange={(e) => setParentAmount(e.target.value)}

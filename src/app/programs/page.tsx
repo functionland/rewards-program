@@ -15,6 +15,7 @@ import { useUserRole, useMemberRole } from "@/hooks/useUserRole";
 import {
   useProgramCount, useProgram, useCreateProgram,
   useAssignProgramAdmin, useAddMember, useMemberBalance,
+  useTransferLimit, useSetTransferLimit,
 } from "@/hooks/useRewardsProgram";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberRoleEnum, MemberTypeLabels } from "@/config/contracts";
 import { fromBytes8, fromBytes12, shortenAddress, formatFula, isValidAddress, formatContractError } from "@/lib/utils";
@@ -99,9 +100,13 @@ function ProgramDetail({ programId }: { programId: number }) {
 
   const { assignProgramAdmin, isPending: isPendingPA, isConfirming: isConfirmingPA, isSuccess: isSuccessPA, error: errorPA } = useAssignProgramAdmin();
   const { addMember, isPending: isPendingM, isConfirming: isConfirmingM, isSuccess: isSuccessM, error: errorM } = useAddMember();
+  const { data: transferLimit } = useTransferLimit(programId);
+  const { setTransferLimit, isPending: isPendingTL, isConfirming: isConfirmingTL, isSuccess: isSuccessTL, error: errorTL } = useSetTransferLimit();
 
   const [openPA, setOpenPA] = useState(false);
   const [openMember, setOpenMember] = useState(false);
+  const [openTL, setOpenTL] = useState(false);
+  const [tlValue, setTlValue] = useState("");
   const [paWallet, setPaWallet] = useState("");
   const [paMemberId, setPaMemberId] = useState("");
   const [mWallet, setMWallet] = useState("");
@@ -144,7 +149,7 @@ function ProgramDetail({ programId }: { programId: number }) {
           <Box>
             <Typography variant="h4">{program.name}</Typography>
             <Typography color="text.secondary">
-              Code: {fromBytes8(program.code as `0x${string}`)} | ID: {program.id}
+              Code: {fromBytes8(program.code as `0x${string}`)} | ID: {program.id} | Transfer Limit: {transferLimit && Number(transferLimit) > 0 ? `${transferLimit}%` : "None"}
             </Typography>
             <Typography color="text.secondary">{program.description}</Typography>
           </Box>
@@ -153,6 +158,11 @@ function ProgramDetail({ programId }: { programId: number }) {
           {isAdmin && (
             <Button variant="contained" onClick={() => setOpenPA(true)}>
               Add Program Admin
+            </Button>
+          )}
+          {isAdmin && (
+            <Button variant="outlined" onClick={() => { setTlValue(String(transferLimit && Number(transferLimit) > 0 ? transferLimit : "")); setOpenTL(true); }}>
+              Set Transfer Limit
             </Button>
           )}
           {canAddMembers && (
@@ -289,6 +299,29 @@ function ProgramDetail({ programId }: { programId: number }) {
             onClick={() => addMember(programId, (mWallet || "0x0000000000000000000000000000000000000000") as `0x${string}`, mMemberId, mRole, "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`, mMemberType)}
             disabled={isPendingM || isConfirmingM || !mMemberId || !mDisclaimer || (!!mWallet && !mWalletValid)}>
             {isPendingM || isConfirmingM ? <CircularProgress size={20} /> : "Add"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Set Transfer Limit Dialog */}
+      <Dialog open={openTL} onClose={() => setOpenTL(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Set Transfer Limit</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Set the maximum percentage of balance a Client can transfer to their parent. Set to 0 for no limit.
+          </Typography>
+          <TextField label="Limit (%)" value={tlValue} onChange={(e) => setTlValue(e.target.value)}
+            fullWidth margin="normal" type="number" inputProps={{ min: 0, max: 100 }}
+            helperText="0 = no restriction, 50 = max 50% of balance" />
+          {errorTL && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(errorTL)}</Alert>}
+          {isSuccessTL && <Alert severity="success" sx={{ mt: 2 }}>Transfer limit updated!</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenTL(false)}>Cancel</Button>
+          <Button variant="contained"
+            onClick={() => setTransferLimit(programId, parseInt(tlValue) || 0)}
+            disabled={isPendingTL || isConfirmingTL}>
+            {isPendingTL || isConfirmingTL ? <CircularProgress size={20} /> : "Set Limit"}
           </Button>
         </DialogActions>
       </Dialog>

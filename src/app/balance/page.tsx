@@ -11,7 +11,7 @@ import { useSearchParams } from "next/navigation";
 import { zeroAddress } from "viem";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberTypeLabels } from "@/config/contracts";
 import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatContractError, fromBytes16 } from "@/lib/utils";
-import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useApproveToken, useAddTokens, useRewardTypes } from "@/hooks/useRewardsProgram";
+import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useApproveToken, useAddTokens, useRewardTypes, useTransferLimit } from "@/hooks/useRewardsProgram";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
 import { QRScannerButton } from "@/components/common/QRScannerButton";
@@ -77,6 +77,7 @@ function OwnerActions({ memberWallet }: { memberWallet: string }) {
   const [parentTo, setParentTo] = useState("");
   const [parentAmount, setParentAmount] = useState("");
   const { transferBack, isPending: isTransBack, isConfirming: isTransBackConf, isSuccess: transBackSuccess, error: transBackError } = useTransferToParent();
+  const { data: transferLimitData } = useTransferLimit(pid);
 
   // Withdraw
   const [withdrawAmount, setWithdrawAmount] = useState("");
@@ -138,6 +139,11 @@ function OwnerActions({ memberWallet }: { memberWallet: string }) {
         {/* Transfer to Parent */}
         <Grid item xs={12} md={4}>
           <Typography variant="subtitle2" gutterBottom>Transfer to Parent</Typography>
+          {transferLimitData != null && Number(transferLimitData) > 0 && (
+            <Alert severity="info" sx={{ mb: 1 }}>
+              Transfer limit: <strong>{Number(transferLimitData)}%</strong> of total balance (Clients only).
+            </Alert>
+          )}
           <TextField label="Parent Wallet (optional)" value={parentTo} onChange={(e) => setParentTo(e.target.value)}
             fullWidth size="small" placeholder="0x... (empty = direct parent)" />
           <TextField label="Amount (FULA)" value={parentAmount} onChange={(e) => setParentAmount(e.target.value)}

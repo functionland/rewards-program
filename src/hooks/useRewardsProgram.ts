@@ -340,6 +340,33 @@ export function useAddSubType() {
   return { addSubType, isPending, isConfirming, isSuccess, error, hash };
 }
 
+export function useTransferLimit(programId: number) {
+  return useReadContract({
+    address: CONTRACTS.rewardsProgram,
+    abi: REWARDS_PROGRAM_ABI,
+    functionName: "getTransferLimit",
+    args: [programId],
+    query: { enabled: programId > 0 },
+  });
+}
+
+export function useSetTransferLimit() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const setTransferLimit = (programId: number, limitPercent: number) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "setTransferLimit",
+      args: [programId, limitPercent],
+    });
+  };
+
+  return { setTransferLimit, isPending, isConfirming, isSuccess, error, hash };
+}
+
 export function useAddTokensDetailed() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });

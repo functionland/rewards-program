@@ -72,6 +72,19 @@ This section maps each business requirement to its implementation so the BA can 
 | Deposit with sub-type breakdown | Supported | `addTokensDetailed(programId, amount, rewardType, note, subTypeIds, subTypeQtys)` — validates sub-type IDs exist and quantities sum to the deposit amount. Emits `DepositSubTypes` event. |
 | View sub-types | Supported | `getSubTypes(programId, rewardType)` returns all active sub-type IDs and names. |
 
+### Transfer Control Limit
+
+| Requirement | Status | Implementation |
+|-------------|--------|----------------|
+| Program owner specifies transfer control limit (0-100%) | Supported | `setTransferLimit(programId, limitPercent)` — admin sets a per-program percentage. Stored on-chain as `uint8`. |
+| Limit restricts Client transfers to parent | Supported | Enforced in `_transferToParentCore`. If SRP limit is 50% and client has 1200 points, max transfer is 600. To transfer 500, client must have at least 1000. |
+| Limit does NOT apply to TeamLeader or ProgramAdmin | Supported | Only `MemberRole.Client` is checked. Higher roles transfer freely. |
+| 0 = no restriction (default) | Supported | Default value is `0` (Solidity zero-init). Existing programs are unaffected — fully backward compatible. |
+| Different programs can have different limits | Supported | Per-program mapping: `mapping(uint32 => uint8) _transferLimits`. SRP at 50%, another at 25%, etc. |
+| Admin can view current limit | Supported | `getTransferLimit(programId)` returns the current percentage. Displayed on Programs detail page. |
+| UI shows transfer limit info | Supported | Programs page displays limit (e.g., "50%" or "None"). Tokens and Balance pages show info alert with max transferable amount when limit > 0. |
+| Admin can change limit | Supported | "Set Transfer Limit" button on Programs detail page (admin only) opens dialog with 0-100 input. |
+
 ### QA10 — Data Intelligence Reports
 
 | Requirement | Status | Implementation |
@@ -150,6 +163,15 @@ Members can transfer tokens back up the hierarchy to any parent in their chain. 
 
 Deduction order: available balance -> expired time-locks -> unexpired time-locks -> permanently locked.
 
+#### Transfer Control Limit
+Each program can have a **Transfer Control Limit** (0-100%) that restricts how much a **Client** can transfer to their parent. The limit is calculated as a percentage of the client's **total balance** (available + permanently locked + time-locked).
+
+- **0% (default)**: No restriction — backward compatible with existing programs
+- **50%**: Client must have at least 2x the transfer amount (e.g., 1200 balance → max 600 transfer)
+- **100%**: Client can transfer their entire balance
+- Only applies to **Client** role — TeamLeaders and ProgramAdmins are not restricted
+- Set by Admin via `setTransferLimit(programId, limitPercent)`
+
 ### Withdraw
 Members withdraw available (unlocked) tokens to their wallet. Expired time-locks are automatically resolved during withdrawal.
 
@@ -183,7 +205,8 @@ Overview showing total programs count and a summary table of all programs (ID, C
 
 ### Programs (`/programs`)
 - **List view**: Table of all programs with ID, code, name, description, and status
-- **Detail view** (`/programs?id=1`): Program details, your balance breakdown, and member table with columns: Member ID, Wallet, Role, **Type**, Parent, Balance, Status, QR
+- **Detail view** (`/programs?id=1`): Program details (including **Transfer Limit**), your balance breakdown, and member table with columns: Member ID, Wallet, Role, **Type**, Parent, Balance, Status, QR
+- **Set Transfer Limit** (Admin only): Dialog to set the per-program transfer control limit (0-100%)
 - **Create Program** (Admin only): Dialog to create a new program with code, name, and description
 - **Add Program Admin** (Admin only): Assign a ProgramAdmin with wallet, member ID, and **member type**
 - **Add Member** (ProgramAdmin/TeamLeader): Add TeamLeaders or Clients with role and **member type** selection
@@ -199,7 +222,7 @@ Results show: Member ID, Wallet, Role, **Type**, Program, Parent, Balance, Statu
 Four-tab interface for token operations:
 1. **Deposit**: Approve and deposit FULA tokens with **reward type** selection and **note** field (128 chars)
 2. **Transfer to Sub-Member**: Send tokens to a sub-member with optional lock
-3. **Transfer to Parent**: Return tokens to a parent in the hierarchy
+3. **Transfer to Parent**: Return tokens to a parent in the hierarchy. Shows transfer limit info alert when the program has a limit configured.
 4. **Withdraw**: Withdraw available tokens to your wallet
 
 ### Balance Lookup (`/balance`)
@@ -209,7 +232,7 @@ Public page that does **not require wallet connection** for viewing. Enter a Mem
 - Balance breakdown (withdrawable, locked, time-locked) per program
 - Status in each program
 
-If the connected wallet matches the member's wallet, action panels appear for deposit (with **reward type** and **note**), transfer to parent, and withdraw.
+If the connected wallet matches the member's wallet, action panels appear for deposit (with **reward type** and **note**), transfer to parent (with **transfer limit** info), and withdraw.
 
 Shareable link format: `/balance?member=MEMBER_ID`
 

@@ -532,6 +532,33 @@ export const REWARDS_PROGRAM_ABI = [
       { name: "quantities", type: "uint128[]", indexed: false },
     ],
   },
+  // Transfer Control Limit
+  {
+    name: "setTransferLimit",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "programId", type: "uint32" },
+      { name: "limitPercent", type: "uint8" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "getTransferLimit",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "programId", type: "uint32" }],
+    outputs: [{ type: "uint8" }],
+  },
+  {
+    name: "TransferLimitUpdated",
+    type: "event",
+    inputs: [
+      { name: "programId", type: "uint32", indexed: true },
+      { name: "oldLimit", type: "uint8", indexed: false },
+      { name: "newLimit", type: "uint8", indexed: false },
+    ],
+  },
 ] as const;
 
 // ERC20 ABI (minimal)
