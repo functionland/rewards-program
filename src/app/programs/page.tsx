@@ -16,7 +16,7 @@ import {
   useProgramCount, useProgram, useCreateProgram,
   useAssignProgramAdmin, useAddMember, useMemberBalance,
 } from "@/hooks/useRewardsProgram";
-import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberRoleEnum } from "@/config/contracts";
+import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberRoleEnum, MemberTypeLabels } from "@/config/contracts";
 import { fromBytes8, fromBytes12, shortenAddress, formatFula, isValidAddress, formatContractError } from "@/lib/utils";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
@@ -73,6 +73,9 @@ function MemberRow({ programId, wallet }: { programId: number; wallet: `0x${stri
           size="small"
         />
       </TableCell>
+      <TableCell>
+        <Chip label={MemberTypeLabels[Number(member.memberType)] || "Free"} size="small" variant="outlined" />
+      </TableCell>
       <TableCell>{shortenAddress(member.parent)}</TableCell>
       <TableCell>
         {balance ? `${formatFula(balance[0])} / ${formatFula(balance[1])} / ${formatFula(balance[2])}` : "-"}
@@ -104,7 +107,9 @@ function ProgramDetail({ programId }: { programId: number }) {
   const [mWallet, setMWallet] = useState("");
   const [mMemberId, setMMemberId] = useState("");
   const [mRole, setMRole] = useState(1);
+  const [paMemberType, setPaMemberType] = useState(0);
   const [paDisclaimer, setPaDisclaimer] = useState(false);
+  const [mMemberType, setMMemberType] = useState(0);
   const [mDisclaimer, setMDisclaimer] = useState(false);
 
   const canAddMembers = isAdmin || role === MemberRoleEnum.ProgramAdmin || role === MemberRoleEnum.TeamLeader;
@@ -115,14 +120,14 @@ function ProgramDetail({ programId }: { programId: number }) {
   // Reset and close dialogs on success
   useEffect(() => {
     if (isSuccessPA) {
-      const t = setTimeout(() => { setOpenPA(false); setPaWallet(""); setPaMemberId(""); setPaDisclaimer(false); }, 1500);
+      const t = setTimeout(() => { setOpenPA(false); setPaWallet(""); setPaMemberId(""); setPaMemberType(0); setPaDisclaimer(false); }, 1500);
       return () => clearTimeout(t);
     }
   }, [isSuccessPA]);
 
   useEffect(() => {
     if (isSuccessM) {
-      const t = setTimeout(() => { setOpenMember(false); setMWallet(""); setMMemberId(""); setMRole(1); setMDisclaimer(false); }, 1500);
+      const t = setTimeout(() => { setOpenMember(false); setMWallet(""); setMMemberId(""); setMRole(1); setMMemberType(0); setMDisclaimer(false); }, 1500);
       return () => clearTimeout(t);
     }
   }, [isSuccessM]);
@@ -193,6 +198,7 @@ function ProgramDetail({ programId }: { programId: number }) {
                 <TableCell>Member ID</TableCell>
                 <TableCell>Wallet</TableCell>
                 <TableCell>Role</TableCell>
+                <TableCell>Type</TableCell>
                 <TableCell>Parent</TableCell>
                 <TableCell>Balance (FULA)</TableCell>
                 <TableCell>Status</TableCell>
@@ -201,7 +207,7 @@ function ProgramDetail({ programId }: { programId: number }) {
             </TableHead>
             <TableBody>
               <TableRow>
-                <TableCell colSpan={7} align="center">
+                <TableCell colSpan={8} align="center">
                   <Typography variant="body2" color="text.secondary">
                     Search for members on the Members page by their Member ID.
                   </Typography>
@@ -221,6 +227,14 @@ function ProgramDetail({ programId }: { programId: number }) {
             error={!!paWallet && !paWalletValid} helperText={paWallet && !paWalletValid ? "Invalid wallet address" : "Leave empty to create walletless member"} />
           <TextField label="Member ID" value={paMemberId} onChange={(e) => setPaMemberId(e.target.value)}
             fullWidth margin="normal" inputProps={{ maxLength: 12 }} />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Member Type</InputLabel>
+            <Select value={paMemberType} onChange={(e) => setPaMemberType(Number(e.target.value))} label="Member Type">
+              {Object.entries(MemberTypeLabels).map(([k, v]) => (
+                <MenuItem key={k} value={Number(k)}>{v}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           {errorPA && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(errorPA)}</Alert>}
           {isSuccessPA && <Alert severity="success" sx={{ mt: 2 }}>Program Admin assigned!</Alert>}
           <OnChainDisclaimer accepted={paDisclaimer} onChange={setPaDisclaimer} />
@@ -228,7 +242,7 @@ function ProgramDetail({ programId }: { programId: number }) {
         <DialogActions>
           <Button onClick={() => setOpenPA(false)}>Cancel</Button>
           <Button variant="contained"
-            onClick={() => assignProgramAdmin(programId, (paWallet || "0x0000000000000000000000000000000000000000") as `0x${string}`, paMemberId)}
+            onClick={() => assignProgramAdmin(programId, (paWallet || "0x0000000000000000000000000000000000000000") as `0x${string}`, paMemberId, "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`, paMemberType)}
             disabled={isPendingPA || isConfirmingPA || !paMemberId || !paDisclaimer || (!!paWallet && !paWalletValid)}>
             {isPendingPA || isConfirmingPA ? <CircularProgress size={20} /> : "Assign"}
           </Button>
@@ -257,6 +271,14 @@ function ProgramDetail({ programId }: { programId: number }) {
               )}
             </Select>
           </FormControl>
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Member Type</InputLabel>
+            <Select value={mMemberType} onChange={(e) => setMMemberType(Number(e.target.value))} label="Member Type">
+              {Object.entries(MemberTypeLabels).map(([k, v]) => (
+                <MenuItem key={k} value={Number(k)}>{v}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           {errorM && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(errorM)}</Alert>}
           {isSuccessM && <Alert severity="success" sx={{ mt: 2 }}>Member added!</Alert>}
           <OnChainDisclaimer accepted={mDisclaimer} onChange={setMDisclaimer} />
@@ -264,7 +286,7 @@ function ProgramDetail({ programId }: { programId: number }) {
         <DialogActions>
           <Button onClick={() => setOpenMember(false)}>Cancel</Button>
           <Button variant="contained"
-            onClick={() => addMember(programId, (mWallet || "0x0000000000000000000000000000000000000000") as `0x${string}`, mMemberId, mRole)}
+            onClick={() => addMember(programId, (mWallet || "0x0000000000000000000000000000000000000000") as `0x${string}`, mMemberId, mRole, "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`, mMemberType)}
             disabled={isPendingM || isConfirmingM || !mMemberId || !mDisclaimer || (!!mWallet && !mWalletValid)}>
             {isPendingM || isConfirmingM ? <CircularProgress size={20} /> : "Add"}
           </Button>

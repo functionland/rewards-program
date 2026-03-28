@@ -6,6 +6,7 @@ import GroupWorkIcon from "@mui/icons-material/GroupWork";
 import PeopleIcon from "@mui/icons-material/People";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
+import AssessmentIcon from "@mui/icons-material/Assessment";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -18,6 +19,7 @@ const navItems = [
   { label: "Members", href: "/members", icon: <PeopleIcon />, requiresAuth: false },
   { label: "Tokens", href: "/tokens", icon: <AccountBalanceWalletIcon />, requiresAuth: true },
   { label: "Balance Lookup", href: "/balance", icon: <ReceiptLongIcon />, requiresAuth: false },
+  { label: "Reports", href: "/reports", icon: <AssessmentIcon />, requiresAuth: false },
 ];
 
 export function Navigation({ mobileOpen, onClose }: { mobileOpen: boolean; onClose: () => void }) {

@@ -4,15 +4,16 @@ import { useState } from "react";
 import {
   Typography, Box, Paper, TextField, Button, Grid, Tabs, Tab,
   Alert, CircularProgress, FormControlLabel, Checkbox,
+  Select, MenuItem, FormControl, InputLabel,
 } from "@mui/material";
 import { useAccount } from "wagmi";
 import { readContract } from "wagmi/actions";
 import { zeroAddress } from "viem";
 import {
   useApproveToken, useAddTokens, useTransferToSubMember, useTransferToParent,
-  useWithdraw, useMemberBalance, useTokenBalance,
+  useWithdraw, useMemberBalance, useTokenBalance, useRewardTypes,
 } from "@/hooks/useRewardsProgram";
-import { formatFula, toBytes12, isValidAddress, formatContractError } from "@/lib/utils";
+import { formatFula, toBytes12, isValidAddress, formatContractError, fromBytes16 } from "@/lib/utils";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { QRScannerButton } from "@/components/common/QRScannerButton";
 import { CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
@@ -32,8 +33,13 @@ export default function TokensPage() {
   const { data: balance } = useMemberBalance(pid, address);
   const { data: walletBalance } = useTokenBalance(address);
 
+  // Reward types
+  const { data: rewardTypesData } = useRewardTypes();
+
   // Deposit state
   const [depositAmount, setDepositAmount] = useState("");
+  const [depositRewardType, setDepositRewardType] = useState(0);
+  const [depositNote, setDepositNote] = useState("");
   const [depositDisclaimer, setDepositDisclaimer] = useState(false);
   const { approve, isPending: isApproving, isConfirming: isAppConfirming, isSuccess: approveSuccess } = useApproveToken();
   const { addTokens, isPending: isDepositing, isConfirming: isDepConfirming, isSuccess: depositSuccess, error: depositError } = useAddTokens();
@@ -142,13 +148,28 @@ export default function TokensPage() {
           </Typography>
           <TextField label="Amount (FULA)" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)}
             fullWidth margin="normal" type="number" />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Reward Type</InputLabel>
+            <Select value={depositRewardType} onChange={(e) => setDepositRewardType(Number(e.target.value))} label="Reward Type">
+              <MenuItem value={0}>None</MenuItem>
+              {rewardTypesData && (rewardTypesData as [number[], string[]])[0]?.map((id: number, idx: number) => (
+                <MenuItem key={id} value={id}>
+                  {fromBytes16((rewardTypesData as [number[], `0x${string}`[]])[1][idx]) || `Type ${id}`}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField label="Note (optional, max 128 chars)" value={depositNote}
+            onChange={(e) => setDepositNote(e.target.value.slice(0, 128))}
+            fullWidth margin="normal" inputProps={{ maxLength: 128 }}
+            helperText={`${depositNote.length}/128`} />
           <OnChainDisclaimer accepted={depositDisclaimer} onChange={setDepositDisclaimer} />
           <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
             <Button variant="outlined" onClick={() => approve(depositAmount)}
               disabled={isApproving || isAppConfirming || !depositAmount || !depositDisclaimer}>
               {isApproving || isAppConfirming ? <CircularProgress size={20} /> : "1. Approve"}
             </Button>
-            <Button variant="contained" onClick={() => addTokens(pid, depositAmount)}
+            <Button variant="contained" onClick={() => addTokens(pid, depositAmount, depositRewardType, depositNote)}
               disabled={isDepositing || isDepConfirming || !depositAmount || !depositDisclaimer}>
               {isDepositing || isDepConfirming ? <CircularProgress size={20} /> : "2. Deposit"}
             </Button>

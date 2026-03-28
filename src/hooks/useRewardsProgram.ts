@@ -57,6 +57,24 @@ export function useProgramCodeToId(code: string) {
   });
 }
 
+export function useRewardTypes() {
+  return useReadContract({
+    address: CONTRACTS.rewardsProgram,
+    abi: REWARDS_PROGRAM_ABI,
+    functionName: "getRewardTypes",
+  });
+}
+
+export function useSubTypes(programId: number, rewardType: number) {
+  return useReadContract({
+    address: CONTRACTS.rewardsProgram,
+    abi: REWARDS_PROGRAM_ABI,
+    functionName: "getSubTypes",
+    args: [programId, rewardType],
+    query: { enabled: programId > 0 },
+  });
+}
+
 // === WRITE HOOKS ===
 
 function useRefetchOnSuccess(isSuccess: boolean) {
@@ -90,12 +108,12 @@ export function useAssignProgramAdmin() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   useRefetchOnSuccess(isSuccess);
 
-  const assignProgramAdmin = (programId: number, wallet: `0x${string}`, memberID: string, editCodeHash: `0x${string}` = "0x0000000000000000000000000000000000000000000000000000000000000000") => {
+  const assignProgramAdmin = (programId: number, wallet: `0x${string}`, memberID: string, editCodeHash: `0x${string}` = "0x0000000000000000000000000000000000000000000000000000000000000000", memberType: number = 0) => {
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "assignProgramAdmin",
-      args: [programId, wallet, toBytes12(memberID), editCodeHash],
+      args: [programId, wallet, toBytes12(memberID), editCodeHash, memberType],
     });
   };
 
@@ -107,12 +125,12 @@ export function useAddMember() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   useRefetchOnSuccess(isSuccess);
 
-  const addMember = (programId: number, wallet: `0x${string}`, memberID: string, role: number, editCodeHash: `0x${string}` = "0x0000000000000000000000000000000000000000000000000000000000000000") => {
+  const addMember = (programId: number, wallet: `0x${string}`, memberID: string, role: number, editCodeHash: `0x${string}` = "0x0000000000000000000000000000000000000000000000000000000000000000", memberType: number = 0) => {
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "addMember",
-      args: [programId, wallet, toBytes12(memberID), role, editCodeHash],
+      args: [programId, wallet, toBytes12(memberID), role, editCodeHash, memberType],
     });
   };
 
@@ -143,14 +161,14 @@ export function useAddTokens() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   useRefetchOnSuccess(isSuccess);
 
-  const addTokens = (programId: number, amount: string) => {
+  const addTokens = (programId: number, amount: string, rewardType: number = 0, note: string = "") => {
     const parsed = safeParseAmount(amount);
     if (!parsed) return;
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "addTokens",
-      args: [programId, parsed],
+      args: [programId, parsed, rewardType, note],
     });
   };
 
@@ -269,4 +287,81 @@ export function useRemoveMember() {
   };
 
   return { removeMember, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useSetMemberType() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const setMemberType = (programId: number, memberID: string, newType: number) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "setMemberType",
+      args: [programId, toBytes12(memberID), newType],
+    });
+  };
+
+  return { setMemberType, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useAddRewardType() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const addRewardType = (typeId: number, name: `0x${string}`) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "addRewardType",
+      args: [typeId, name],
+    });
+  };
+
+  return { addRewardType, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useAddSubType() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const addSubType = (programId: number, rewardType: number, subTypeId: number, name: `0x${string}`) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "addSubType",
+      args: [programId, rewardType, subTypeId, name],
+    });
+  };
+
+  return { addSubType, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useAddTokensDetailed() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const addTokensDetailed = (
+    programId: number,
+    amount: string,
+    rewardType: number,
+    note: string,
+    subTypeIds: number[],
+    subTypeQtys: bigint[]
+  ) => {
+    const parsed = safeParseAmount(amount);
+    if (!parsed) return;
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "addTokensDetailed",
+      args: [programId, parsed, rewardType, note, subTypeIds, subTypeQtys],
+    });
+  };
+
+  return { addTokensDetailed, isPending, isConfirming, isSuccess, error, hash };
 }

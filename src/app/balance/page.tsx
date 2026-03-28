@@ -4,14 +4,14 @@ import { useState, Suspense } from "react";
 import {
   Typography, Box, Paper, Grid, Chip, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, TextField, Button, Alert,
-  CircularProgress,
+  CircularProgress, Select, MenuItem, FormControl, InputLabel,
 } from "@mui/material";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { useSearchParams } from "next/navigation";
 import { zeroAddress } from "viem";
-import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels } from "@/config/contracts";
-import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatContractError } from "@/lib/utils";
-import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useApproveToken, useAddTokens } from "@/hooks/useRewardsProgram";
+import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberTypeLabels } from "@/config/contracts";
+import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatContractError, fromBytes16 } from "@/lib/utils";
+import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useApproveToken, useAddTokens, useRewardTypes } from "@/hooks/useRewardsProgram";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
 import { QRScannerButton } from "@/components/common/QRScannerButton";
@@ -49,6 +49,9 @@ function MemberProgramRow({ memberID, programId }: { memberID: string; programId
         <Chip label={MemberRoleLabels[Number(member.role)] || "Unknown"} size="small"
           color={Number(member.role) === 3 ? "primary" : Number(member.role) === 2 ? "secondary" : "default"} />
       </TableCell>
+      <TableCell>
+        <Chip label={MemberTypeLabels[Number(member.memberType)] || "Free"} size="small" variant="outlined" />
+      </TableCell>
       <TableCell>{shortenAddress(member.parent)}</TableCell>
       <TableCell sx={{ color: "success.main" }}>{balance ? formatFula(balance[0]) : "-"}</TableCell>
       <TableCell sx={{ color: "error.main" }}>{balance ? formatFula(balance[1]) : "-"}</TableCell>
@@ -81,8 +84,11 @@ function OwnerActions({ memberWallet }: { memberWallet: string }) {
 
   // Deposit
   const [depositAmount, setDepositAmount] = useState("");
+  const [depositRewardType, setDepositRewardType] = useState(0);
+  const [depositNote, setDepositNote] = useState("");
   const { approve, isPending: isApproving, isConfirming: isAppConf, isSuccess: approveSuccess } = useApproveToken();
   const { addTokens, isPending: isDepositing, isConfirming: isDepConf, isSuccess: depositSuccess, error: depositError } = useAddTokens();
+  const { data: rewardTypesData } = useRewardTypes();
 
   const [disclaimer, setDisclaimer] = useState(false);
 
@@ -100,12 +106,26 @@ function OwnerActions({ memberWallet }: { memberWallet: string }) {
           <Typography variant="subtitle2" gutterBottom>Deposit FULA</Typography>
           <TextField label="Amount (FULA)" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)}
             fullWidth size="small" type="number" />
+          <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+            <InputLabel>Reward Type</InputLabel>
+            <Select value={depositRewardType} onChange={(e) => setDepositRewardType(Number(e.target.value))} label="Reward Type">
+              <MenuItem value={0}>None</MenuItem>
+              {rewardTypesData && (rewardTypesData as [number[], string[]])[0]?.map((id: number, idx: number) => (
+                <MenuItem key={id} value={id}>
+                  {fromBytes16((rewardTypesData as [number[], `0x${string}`[]])[1][idx]) || `Type ${id}`}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField label="Note (max 128)" value={depositNote}
+            onChange={(e) => setDepositNote(e.target.value.slice(0, 128))}
+            fullWidth size="small" sx={{ mt: 1 }} inputProps={{ maxLength: 128 }} />
           <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
             <Button size="small" variant="outlined" onClick={() => approve(depositAmount)}
               disabled={isApproving || isAppConf || !depositAmount || !disclaimer}>
               {isApproving || isAppConf ? <CircularProgress size={16} /> : "Approve"}
             </Button>
-            <Button size="small" variant="contained" onClick={() => addTokens(pid, depositAmount)}
+            <Button size="small" variant="contained" onClick={() => addTokens(pid, depositAmount, depositRewardType, depositNote)}
               disabled={isDepositing || isDepConf || !depositAmount || !disclaimer}>
               {isDepositing || isDepConf ? <CircularProgress size={16} /> : "Deposit"}
             </Button>
@@ -269,6 +289,7 @@ function BalanceContent() {
                         <TableCell>Program</TableCell>
                         <TableCell>Code</TableCell>
                         <TableCell>Role</TableCell>
+                        <TableCell>Type</TableCell>
                         <TableCell>Parent</TableCell>
                         <TableCell>Available</TableCell>
                         <TableCell>Locked</TableCell>

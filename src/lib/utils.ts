@@ -26,6 +26,11 @@ export function fromBytes12(hex: Hex): string {
   return new TextDecoder().decode(bytes).replace(/\0+$/, "");
 }
 
+export function fromBytes16(hex: Hex): string {
+  const bytes = hexToBytes(hex);
+  return new TextDecoder().decode(bytes).replace(/\0+$/, "");
+}
+
 function hexToBytes(hex: string): Uint8Array {
   const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
   const bytes = new Uint8Array(clean.length / 2);
@@ -75,7 +80,10 @@ const ERROR_MAP: Record<string, string> = {
   InvalidProgramCode: "Program code cannot be empty.",
   LockTimeTooLong: "Lock time exceeds maximum of 1095 days (3 years).",
   MaxTimeLockTranchesReached: "Maximum number of time-lock tranches reached (50).",
-  NoteMustBe256Bytes: "Note must be 256 characters or fewer.",
+  NoteTooLong: "Note must be 128 characters or fewer.",
+  InvalidMemberType: "Invalid member type.",
+  InvalidRewardType: "Invalid reward type.",
+  InvalidSubTypeData: "Invalid sub-type data.",
   InvalidAddress: "Invalid address provided.",
 };
 

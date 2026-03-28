@@ -7,7 +7,7 @@ import {
   ToggleButton, Alert,
 } from "@mui/material";
 import { useReadContract } from "wagmi";
-import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels } from "@/config/contracts";
+import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberTypeLabels } from "@/config/contracts";
 import { toBytes12, toBytes8, fromBytes12, shortenAddress, formatFula } from "@/lib/utils";
 import { useProgramCodeToId } from "@/hooks/useRewardsProgram";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
@@ -120,6 +120,7 @@ export default function MembersPage() {
                 <TableCell>Member ID</TableCell>
                 <TableCell>Wallet</TableCell>
                 <TableCell>Role</TableCell>
+                <TableCell>Type</TableCell>
                 <TableCell>Program</TableCell>
                 <TableCell>Parent</TableCell>
                 <TableCell>Balance (FULA)</TableCell>
@@ -137,6 +138,9 @@ export default function MembersPage() {
                 </TableCell>
                 <TableCell>
                   <Chip label={MemberRoleLabels[Number(memberByID.role)]} size="small" />
+                </TableCell>
+                <TableCell>
+                  <Chip label={MemberTypeLabels[Number(memberByID.memberType)] || "Free"} size="small" variant="outlined" />
                 </TableCell>
                 <TableCell>{memberByID.programId}</TableCell>
                 <TableCell>{shortenAddress(memberByID.parent)}</TableCell>

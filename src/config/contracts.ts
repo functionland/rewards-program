@@ -23,6 +23,20 @@ export const MemberRoleLabels: Record<number, string> = {
   3: "Program Admin",
 };
 
+export const MemberTypeEnum = {
+  Free: 0,
+  Vip: 1,
+  Elite: 2,
+  PSPartner: 3,
+} as const;
+
+export const MemberTypeLabels: Record<number, string> = {
+  0: "Free",
+  1: "VIP",
+  2: "Elite",
+  3: "PS Partner",
+};
+
 // RewardsProgram ABI (minimal - key functions only)
 export const REWARDS_PROGRAM_ABI = [
   // Read functions
@@ -70,6 +84,7 @@ export const REWARDS_PROGRAM_ABI = [
         { name: "wallet", type: "address" },
         { name: "memberID", type: "bytes12" },
         { name: "role", type: "uint8" },
+        { name: "memberType", type: "uint8" },
         { name: "programId", type: "uint32" },
         { name: "parent", type: "address" },
         { name: "active", type: "bool" },
@@ -90,6 +105,7 @@ export const REWARDS_PROGRAM_ABI = [
         { name: "wallet", type: "address" },
         { name: "memberID", type: "bytes12" },
         { name: "role", type: "uint8" },
+        { name: "memberType", type: "uint8" },
         { name: "programId", type: "uint32" },
         { name: "parent", type: "address" },
         { name: "active", type: "bool" },
@@ -130,6 +146,43 @@ export const REWARDS_PROGRAM_ABI = [
     ],
     outputs: [{ type: "bool" }],
   },
+  {
+    name: "getRewardTypes",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "ids", type: "uint8[]" },
+      { name: "names", type: "bytes16[]" },
+    ],
+  },
+  {
+    name: "getSubTypes",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "programId", type: "uint32" },
+      { name: "rewardType", type: "uint8" },
+    ],
+    outputs: [
+      { name: "ids", type: "uint8[]" },
+      { name: "names", type: "bytes16[]" },
+    ],
+  },
+  {
+    name: "validRewardTypes",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    name: "depositCount",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint64" }],
+  },
   // Write functions
   {
     name: "createProgram",
@@ -169,6 +222,7 @@ export const REWARDS_PROGRAM_ABI = [
       { name: "wallet", type: "address" },
       { name: "memberID", type: "bytes12" },
       { name: "editCodeHash", type: "bytes32" },
+      { name: "memberType", type: "uint8" },
     ],
     outputs: [],
   },
@@ -182,6 +236,7 @@ export const REWARDS_PROGRAM_ABI = [
       { name: "memberID", type: "bytes12" },
       { name: "role", type: "uint8" },
       { name: "editCodeHash", type: "bytes32" },
+      { name: "memberType", type: "uint8" },
     ],
     outputs: [],
   },
@@ -196,6 +251,7 @@ export const REWARDS_PROGRAM_ABI = [
       { name: "memberID", type: "bytes12" },
       { name: "role", type: "uint8" },
       { name: "editCodeHash", type: "bytes32" },
+      { name: "memberType", type: "uint8" },
     ],
     outputs: [],
   },
@@ -260,6 +316,8 @@ export const REWARDS_PROGRAM_ABI = [
     inputs: [
       { name: "programId", type: "uint32" },
       { name: "amount", type: "uint256" },
+      { name: "rewardType", type: "uint8" },
+      { name: "note", type: "string" },
     ],
     outputs: [],
   },
@@ -304,10 +362,80 @@ export const REWARDS_PROGRAM_ABI = [
     inputs: [
       { name: "programId", type: "uint32" },
       { name: "memberID", type: "bytes12" },
+      { name: "action", type: "uint8" },
       { name: "to", type: "address" },
       { name: "amount", type: "uint256" },
       { name: "locked", type: "bool" },
       { name: "lockTimeDays", type: "uint32" },
+      { name: "rewardType", type: "uint8" },
+      { name: "note", type: "string" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "setMemberType",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "programId", type: "uint32" },
+      { name: "memberID", type: "bytes12" },
+      { name: "newType", type: "uint8" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "addRewardType",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "typeId", type: "uint8" },
+      { name: "name", type: "bytes16" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "removeRewardType",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "typeId", type: "uint8" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "addSubType",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "programId", type: "uint32" },
+      { name: "rewardType", type: "uint8" },
+      { name: "subTypeId", type: "uint8" },
+      { name: "name", type: "bytes16" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "removeSubType",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "programId", type: "uint32" },
+      { name: "rewardType", type: "uint8" },
+      { name: "subTypeId", type: "uint8" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "addTokensDetailed",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "programId", type: "uint32" },
+      { name: "amount", type: "uint256" },
+      { name: "rewardType", type: "uint8" },
+      { name: "note", type: "string" },
+      { name: "subTypeIds", type: "uint8[]" },
+      { name: "subTypeQtys", type: "uint128[]" },
     ],
     outputs: [],
   },
@@ -329,6 +457,7 @@ export const REWARDS_PROGRAM_ABI = [
       { name: "wallet", type: "address", indexed: true },
       { name: "parent", type: "address", indexed: true },
       { name: "role", type: "uint8", indexed: false },
+      { name: "memberType", type: "uint8", indexed: false },
       { name: "memberID", type: "bytes12", indexed: false },
     ],
   },
@@ -336,13 +465,24 @@ export const REWARDS_PROGRAM_ABI = [
     name: "TokensTransferredToMember",
     type: "event",
     inputs: [
-      { name: "transferId", type: "uint256", indexed: true },
       { name: "programId", type: "uint32", indexed: true },
       { name: "from", type: "address", indexed: true },
-      { name: "to", type: "address", indexed: false },
+      { name: "to", type: "address", indexed: true },
       { name: "amount", type: "uint256", indexed: false },
       { name: "locked", type: "bool", indexed: false },
       { name: "lockTimeDays", type: "uint32", indexed: false },
+    ],
+  },
+  {
+    name: "TokensDeposited",
+    type: "event",
+    inputs: [
+      { name: "depositId", type: "uint256", indexed: true },
+      { name: "programId", type: "uint32", indexed: true },
+      { name: "wallet", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "rewardType", type: "uint8", indexed: false },
+      { name: "note", type: "string", indexed: false },
     ],
   },
   {
@@ -361,6 +501,35 @@ export const REWARDS_PROGRAM_ABI = [
       { name: "programId", type: "uint32", indexed: true },
       { name: "memberKey", type: "address", indexed: true },
       { name: "wallet", type: "address", indexed: true },
+    ],
+  },
+  {
+    name: "MemberTypeChanged",
+    type: "event",
+    inputs: [
+      { name: "programId", type: "uint32", indexed: true },
+      { name: "memberKey", type: "address", indexed: true },
+      { name: "oldType", type: "uint8", indexed: false },
+      { name: "newType", type: "uint8", indexed: false },
+    ],
+  },
+  {
+    name: "RewardTypeAdded",
+    type: "event",
+    inputs: [
+      { name: "typeId", type: "uint8", indexed: true },
+      { name: "name", type: "bytes16", indexed: false },
+    ],
+  },
+  {
+    name: "DepositSubTypes",
+    type: "event",
+    inputs: [
+      { name: "depositId", type: "uint256", indexed: true },
+      { name: "programId", type: "uint32", indexed: true },
+      { name: "depositor", type: "address", indexed: true },
+      { name: "subTypeIds", type: "uint8[]", indexed: false },
+      { name: "quantities", type: "uint128[]", indexed: false },
     ],
   },
 ] as const;

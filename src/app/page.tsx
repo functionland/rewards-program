@@ -1,16 +1,46 @@
 "use client";
 
-import { Typography, Grid, Paper, Box, Alert } from "@mui/material";
+import {
+  Typography, Grid, Paper, Box, Alert, Table, TableBody, TableCell,
+  TableContainer, TableHead, TableRow, Chip,
+} from "@mui/material";
+import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useUserRole } from "@/hooks/useUserRole";
-import { useProgramCount, useTokenBalance } from "@/hooks/useRewardsProgram";
-import { formatFula } from "@/lib/utils";
+import { useProgramCount, useProgram, useTokenBalance } from "@/hooks/useRewardsProgram";
+import { formatFula, fromBytes8 } from "@/lib/utils";
+
+function ProgramSummaryRow({ programId }: { programId: number }) {
+  const { data: program } = useProgram(programId);
+  if (!program) return null;
+
+  return (
+    <TableRow hover>
+      <TableCell>{program.id}</TableCell>
+      <TableCell>{fromBytes8(program.code as `0x${string}`)}</TableCell>
+      <TableCell>
+        <Link href={`/programs?id=${program.id}`} style={{ color: "#6366f1", textDecoration: "none" }}>
+          {program.name}
+        </Link>
+      </TableCell>
+      <TableCell>
+        <Chip
+          label={program.active ? "Active" : "Inactive"}
+          color={program.active ? "success" : "default"}
+          size="small"
+        />
+      </TableCell>
+    </TableRow>
+  );
+}
 
 export default function Dashboard() {
   const { address } = useAccount();
   const { isAdmin, isConnected } = useUserRole();
   const { data: programCount } = useProgramCount();
   const { data: walletBalance } = useTokenBalance(address);
+
+  const count = Number(programCount || 0);
 
   return (
     <Box>
@@ -28,11 +58,11 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      <Grid container spacing={3}>
+      <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Paper sx={{ p: 3, textAlign: "center" }}>
             <Typography color="text.secondary" variant="body2">Total Programs</Typography>
-            <Typography variant="h3">{programCount?.toString() || "0"}</Typography>
+            <Typography variant="h3">{count}</Typography>
           </Paper>
         </Grid>
 
@@ -56,6 +86,26 @@ export default function Dashboard() {
           </>
         )}
       </Grid>
+
+      {count > 0 && (
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>ID</TableCell>
+                <TableCell>Code</TableCell>
+                <TableCell>Name</TableCell>
+                <TableCell>Status</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {Array.from({ length: count }, (_, i) => (
+                <ProgramSummaryRow key={i + 1} programId={i + 1} />
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
     </Box>
   );
 }
