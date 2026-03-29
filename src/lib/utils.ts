@@ -26,6 +26,14 @@ export function fromBytes12(hex: Hex): string {
   return new TextDecoder().decode(bytes).replace(/\0+$/, "");
 }
 
+export function toBytes16(str: string): Hex {
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(str);
+  const padded = new Uint8Array(16);
+  padded.set(bytes.slice(0, 16));
+  return ("0x" + Array.from(padded).map(b => b.toString(16).padStart(2, "0")).join("")) as Hex;
+}
+
 export function fromBytes16(hex: Hex): string {
   const bytes = hexToBytes(hex);
   return new TextDecoder().decode(bytes).replace(/\0+$/, "");
@@ -87,6 +95,10 @@ const ERROR_MAP: Record<string, string> = {
   TransferExceedsLimit: "Transfer amount exceeds the program's transfer control limit.",
   InvalidTransferLimit: "Transfer limit must be between 0 and 100.",
   InvalidAddress: "Invalid address provided.",
+  InvalidEditCode: "Invalid edit code or member already has a wallet linked.",
+  ExtensionNotSet: "Extension contract not configured.",
+  MemberNotActive: "Member is not active.",
+  MemberHasBalance: "Cannot remove member with outstanding balance.",
 };
 
 export function formatContractError(error: Error): string {

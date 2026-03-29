@@ -1,26 +1,41 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useCallback } from "react";
 import {
   Typography, Box, Paper, Button, TextField, Grid, Chip, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Dialog, DialogTitle,
   DialogContent, DialogActions, Alert, CircularProgress,
-  Select, MenuItem, FormControl, InputLabel, IconButton,
+  Select, MenuItem, FormControl, InputLabel, IconButton, Tooltip,
+  Accordion, AccordionSummary, AccordionDetails, useMediaQuery, useTheme,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import EditIcon from "@mui/icons-material/Edit";
+import BlockIcon from "@mui/icons-material/Block";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import DeleteIcon from "@mui/icons-material/Delete";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import { useAccount, useReadContract } from "wagmi";
 import { useSearchParams } from "next/navigation";
+import { keccak256 } from "viem";
 import Link from "next/link";
 import { useUserRole, useMemberRole } from "@/hooks/useUserRole";
 import {
   useProgramCount, useProgram, useCreateProgram,
   useAssignProgramAdmin, useAddMember, useMemberBalance,
   useTransferLimit, useSetTransferLimit,
+  useUpdateProgram, useDeactivateProgram,
+  useAddRewardType, useRemoveRewardType, useRewardTypes,
+  useAddSubType, useRemoveSubType, useSubTypes,
 } from "@/hooks/useRewardsProgram";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberRoleEnum, MemberTypeLabels } from "@/config/contracts";
-import { fromBytes8, fromBytes12, shortenAddress, formatFula, isValidAddress, formatContractError } from "@/lib/utils";
+import { fromBytes8, fromBytes12, fromBytes16, shortenAddress, formatFula, isValidAddress, formatContractError } from "@/lib/utils";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
+
+function generateEditCode(): `0x${string}` {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return ("0x" + Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("")) as `0x${string}`;
+}
 
 /* -- Program List Row -- */
 
@@ -37,155 +52,389 @@ function ProgramRow({ programId }: { programId: number }) {
           {program.name}
         </Link>
       </TableCell>
-      <TableCell>{program.description}</TableCell>
-      <TableCell>{program.active ? "Active" : "Inactive"}</TableCell>
+      <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>{program.description}</TableCell>
+      <TableCell>{program.active ? <Chip label="Active" color="success" size="small" /> : <Chip label="Inactive" size="small" />}</TableCell>
     </TableRow>
   );
 }
 
-/* -- Member Row (for detail view) -- */
+/* -- Reward Types Management (inline) -- */
 
-function MemberRow({ programId, wallet }: { programId: number; wallet: `0x${string}` }) {
-  const { data: member } = useReadContract({
-    address: CONTRACTS.rewardsProgram,
-    abi: REWARDS_PROGRAM_ABI,
-    functionName: "getMember",
-    args: [programId, wallet],
-  });
-  const { data: balance } = useReadContract({
-    address: CONTRACTS.rewardsProgram,
-    abi: REWARDS_PROGRAM_ABI,
-    functionName: "getBalance",
-    args: [programId, wallet],
-  });
+function RewardTypesSection({ isAdmin }: { isAdmin: boolean }) {
+  const { data: rewardTypesData } = useRewardTypes();
+  const { addRewardType, isPending: isAddingRT, isConfirming: isConfirmingRT, isSuccess: addRTSuccess, error: addRTError } = useAddRewardType();
+  const { removeRewardType, isPending: isRemovingRT, isConfirming: isConfirmingRemRT } = useRemoveRewardType();
+  const [rtId, setRtId] = useState("");
+  const [rtName, setRtName] = useState("");
 
-  if (!member) return null;
+  useEffect(() => {
+    if (addRTSuccess) { setRtId(""); setRtName(""); }
+  }, [addRTSuccess]);
 
-  const memberIdStr = fromBytes12(member.memberID as `0x${string}`);
+  const ids = rewardTypesData ? (rewardTypesData as [number[], `0x${string}`[]])[0] : [];
+  const names = rewardTypesData ? (rewardTypesData as [number[], `0x${string}`[]])[1] : [];
 
   return (
-    <TableRow hover>
-      <TableCell>{memberIdStr}</TableCell>
-      <TableCell sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}>{shortenAddress(member.wallet)}</TableCell>
-      <TableCell>
-        <Chip
-          label={MemberRoleLabels[Number(member.role)] || "Unknown"}
-          color={Number(member.role) === 3 ? "primary" : Number(member.role) === 2 ? "secondary" : "default"}
-          size="small"
-        />
-      </TableCell>
-      <TableCell>
-        <Chip label={MemberTypeLabels[Number(member.memberType)] || "Free"} size="small" variant="outlined" />
-      </TableCell>
-      <TableCell>{shortenAddress(member.parent)}</TableCell>
-      <TableCell>
-        {balance ? `${formatFula(balance[0])} / ${formatFula(balance[1])} / ${formatFula(balance[2])}` : "-"}
-      </TableCell>
-      <TableCell>{member.active ? "Active" : "Inactive"}</TableCell>
-      <TableCell>
-        <QRCodeDisplay programId={programId} memberID={memberIdStr} size={64} />
-      </TableCell>
-    </TableRow>
+    <Accordion>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Typography variant="subtitle1">Reward Types ({ids.length})</Typography>
+      </AccordionSummary>
+      <AccordionDetails>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>ID</TableCell>
+              <TableCell>Name</TableCell>
+              {isAdmin && <TableCell width={60}>Remove</TableCell>}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {ids.map((id: number, idx: number) => (
+              <TableRow key={id}>
+                <TableCell>{id}</TableCell>
+                <TableCell>{fromBytes16(names[idx])}</TableCell>
+                {isAdmin && (
+                  <TableCell>
+                    <IconButton size="small" color="error" onClick={() => removeRewardType(id)}
+                      disabled={isRemovingRT || isConfirmingRemRT}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+            {ids.length === 0 && (
+              <TableRow><TableCell colSpan={isAdmin ? 3 : 2} align="center"><Typography variant="body2" color="text.secondary">No reward types defined.</Typography></TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+        {isAdmin && (
+          <Box sx={{ display: "flex", gap: 1, mt: 2, flexWrap: "wrap", alignItems: "center" }}>
+            <TextField label="Type ID" value={rtId} onChange={(e) => setRtId(e.target.value)}
+              size="small" type="number" sx={{ width: 100 }} inputProps={{ min: 0, max: 255 }} />
+            <TextField label="Name" value={rtName} onChange={(e) => setRtName(e.target.value)}
+              size="small" sx={{ flexGrow: 1, minWidth: 120 }} inputProps={{ maxLength: 16 }} />
+            <Button variant="outlined" size="small"
+              onClick={() => addRewardType(parseInt(rtId), rtName)}
+              disabled={isAddingRT || isConfirmingRT || !rtId || !rtName}>
+              {isAddingRT || isConfirmingRT ? <CircularProgress size={16} /> : "Add"}
+            </Button>
+          </Box>
+        )}
+        {addRTError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(addRTError)}</Alert>}
+        {addRTSuccess && <Alert severity="success" sx={{ mt: 1 }}>Reward type added!</Alert>}
+      </AccordionDetails>
+    </Accordion>
+  );
+}
+
+/* -- Sub-Types Management (inline) -- */
+
+function SubTypesSection({ programId, canManage }: { programId: number; canManage: boolean }) {
+  const { data: rewardTypesData } = useRewardTypes();
+  const [selectedRT, setSelectedRT] = useState(0);
+  const { data: subTypesData } = useSubTypes(programId, selectedRT);
+  const { addSubType, isPending: isAddingST, isConfirming: isConfirmingST, isSuccess: addSTSuccess, error: addSTError } = useAddSubType();
+  const { removeSubType, isPending: isRemovingST, isConfirming: isConfirmingRemST } = useRemoveSubType();
+  const [stId, setStId] = useState("");
+  const [stName, setStName] = useState("");
+
+  useEffect(() => {
+    if (addSTSuccess) { setStId(""); setStName(""); }
+  }, [addSTSuccess]);
+
+  const rtIds = rewardTypesData ? (rewardTypesData as [number[], `0x${string}`[]])[0] : [];
+  const rtNames = rewardTypesData ? (rewardTypesData as [number[], `0x${string}`[]])[1] : [];
+  const stIds = subTypesData ? (subTypesData as [number[], `0x${string}`[]])[0] : [];
+  const stNames = subTypesData ? (subTypesData as [number[], `0x${string}`[]])[1] : [];
+
+  return (
+    <Accordion>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Typography variant="subtitle1">Sub-Types</Typography>
+      </AccordionSummary>
+      <AccordionDetails>
+        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+          <InputLabel>Reward Type</InputLabel>
+          <Select value={selectedRT} onChange={(e) => setSelectedRT(Number(e.target.value))} label="Reward Type">
+            <MenuItem value={0}>-- Select --</MenuItem>
+            {rtIds.map((id: number, idx: number) => (
+              <MenuItem key={id} value={id}>{fromBytes16(rtNames[idx]) || `Type ${id}`}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        {selectedRT > 0 && (
+          <>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>ID</TableCell>
+                  <TableCell>Name</TableCell>
+                  {canManage && <TableCell width={60}>Remove</TableCell>}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {stIds.map((id: number, idx: number) => (
+                  <TableRow key={id}>
+                    <TableCell>{id}</TableCell>
+                    <TableCell>{fromBytes16(stNames[idx])}</TableCell>
+                    {canManage && (
+                      <TableCell>
+                        <IconButton size="small" color="error"
+                          onClick={() => removeSubType(programId, selectedRT, id)}
+                          disabled={isRemovingST || isConfirmingRemST}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+                {stIds.length === 0 && (
+                  <TableRow><TableCell colSpan={canManage ? 3 : 2} align="center"><Typography variant="body2" color="text.secondary">No sub-types for this reward type.</Typography></TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+            {canManage && (
+              <Box sx={{ display: "flex", gap: 1, mt: 2, flexWrap: "wrap", alignItems: "center" }}>
+                <TextField label="Sub-type ID" value={stId} onChange={(e) => setStId(e.target.value)}
+                  size="small" type="number" sx={{ width: 110 }} inputProps={{ min: 0, max: 255 }} />
+                <TextField label="Name" value={stName} onChange={(e) => setStName(e.target.value)}
+                  size="small" sx={{ flexGrow: 1, minWidth: 120 }} inputProps={{ maxLength: 16 }} />
+                <Button variant="outlined" size="small"
+                  onClick={() => addSubType(programId, selectedRT, parseInt(stId), stName)}
+                  disabled={isAddingST || isConfirmingST || !stId || !stName}>
+                  {isAddingST || isConfirmingST ? <CircularProgress size={16} /> : "Add"}
+                </Button>
+              </Box>
+            )}
+            {addSTError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(addSTError)}</Alert>}
+            {addSTSuccess && <Alert severity="success" sx={{ mt: 1 }}>Sub-type added!</Alert>}
+          </>
+        )}
+      </AccordionDetails>
+    </Accordion>
   );
 }
 
 /* -- Program Detail View -- */
 
 function ProgramDetail({ programId }: { programId: number }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { address } = useAccount();
   const { isAdmin } = useUserRole();
   const { role } = useMemberRole(programId);
-  const { data: program } = useProgram(programId);
+  const { data: program, refetch: refetchProgram } = useProgram(programId);
   const { data: myBalance } = useMemberBalance(programId, address);
-
-  const { assignProgramAdmin, isPending: isPendingPA, isConfirming: isConfirmingPA, isSuccess: isSuccessPA, error: errorPA } = useAssignProgramAdmin();
-  const { addMember, isPending: isPendingM, isConfirming: isConfirmingM, isSuccess: isSuccessM, error: errorM } = useAddMember();
   const { data: transferLimit } = useTransferLimit(programId);
-  const { setTransferLimit, isPending: isPendingTL, isConfirming: isConfirmingTL, isSuccess: isSuccessTL, error: errorTL } = useSetTransferLimit();
 
+  const isPA = role === MemberRoleEnum.ProgramAdmin;
+  const canManageProgram = isAdmin;
+  const canManageSubTypes = isAdmin || isPA;
+  const canSetTransferLimit = isAdmin || isPA;
+  const canAddMembers = isAdmin || isPA || role === MemberRoleEnum.TeamLeader;
+
+  // Assign PA
+  const { assignProgramAdmin, isPending: isPendingPA, isConfirming: isConfirmingPA, isSuccess: isSuccessPA, error: errorPA } = useAssignProgramAdmin();
   const [openPA, setOpenPA] = useState(false);
-  const [openMember, setOpenMember] = useState(false);
-  const [openTL, setOpenTL] = useState(false);
-  const [tlValue, setTlValue] = useState("");
   const [paWallet, setPaWallet] = useState("");
   const [paMemberId, setPaMemberId] = useState("");
+  const [paMemberType, setPaMemberType] = useState(0);
+  const [paDisclaimer, setPaDisclaimer] = useState(false);
+  const [paEditCode, setPaEditCode] = useState<`0x${string}` | "">("");
+
+  // Add Member
+  const { addMember, isPending: isPendingM, isConfirming: isConfirmingM, isSuccess: isSuccessM, error: errorM } = useAddMember();
+  const [openMember, setOpenMember] = useState(false);
   const [mWallet, setMWallet] = useState("");
   const [mMemberId, setMMemberId] = useState("");
   const [mRole, setMRole] = useState(1);
-  const [paMemberType, setPaMemberType] = useState(0);
-  const [paDisclaimer, setPaDisclaimer] = useState(false);
   const [mMemberType, setMMemberType] = useState(0);
   const [mDisclaimer, setMDisclaimer] = useState(false);
+  const [mEditCode, setMEditCode] = useState<`0x${string}` | "">("");
 
-  const canAddMembers = isAdmin || role === MemberRoleEnum.ProgramAdmin || role === MemberRoleEnum.TeamLeader;
+  // Transfer Limit
+  const { setTransferLimit, isPending: isPendingTL, isConfirming: isConfirmingTL, isSuccess: isSuccessTL, error: errorTL } = useSetTransferLimit();
+  const [openTL, setOpenTL] = useState(false);
+  const [tlValue, setTlValue] = useState("");
+
+  // Edit Program
+  const { updateProgram, isPending: isPendingEP, isConfirming: isConfirmingEP, isSuccess: isSuccessEP, error: errorEP } = useUpdateProgram();
+  const [openEdit, setOpenEdit] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+
+  // Deactivate Program
+  const { deactivateProgram, isPending: isPendingDP, isConfirming: isConfirmingDP, isSuccess: isSuccessDP, error: errorDP } = useDeactivateProgram();
+  const [openDeactivate, setOpenDeactivate] = useState(false);
+
+  // Show generated editCode
+  const [showEditCodeDialog, setShowEditCodeDialog] = useState(false);
+  const [displayEditCode, setDisplayEditCode] = useState("");
+  const [displayMemberId, setDisplayMemberId] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const paWalletValid = !paWallet || isValidAddress(paWallet);
   const mWalletValid = !mWallet || isValidAddress(mWallet);
 
-  // Reset and close dialogs on success
+  // Generate editCode when creating walletless member
+  const openPADialog = useCallback(() => {
+    setPaWallet(""); setPaMemberId(""); setPaMemberType(0); setPaDisclaimer(false);
+    const code = generateEditCode();
+    setPaEditCode(code);
+    setOpenPA(true);
+  }, []);
+
+  const openMemberDialog = useCallback(() => {
+    setMWallet(""); setMMemberId(""); setMRole(1); setMMemberType(0); setMDisclaimer(false);
+    const code = generateEditCode();
+    setMEditCode(code);
+    setOpenMember(true);
+  }, []);
+
+  // After PA assigned
   useEffect(() => {
     if (isSuccessPA) {
-      const t = setTimeout(() => { setOpenPA(false); setPaWallet(""); setPaMemberId(""); setPaMemberType(0); setPaDisclaimer(false); }, 1500);
+      if (!paWallet && paEditCode) {
+        setDisplayEditCode(paEditCode);
+        setDisplayMemberId(paMemberId);
+      }
+      const t = setTimeout(() => {
+        setOpenPA(false);
+        if (!paWallet && paEditCode) setShowEditCodeDialog(true);
+      }, 800);
       return () => clearTimeout(t);
     }
-  }, [isSuccessPA]);
+  }, [isSuccessPA, paWallet, paEditCode, paMemberId]);
 
+  // After member added
   useEffect(() => {
     if (isSuccessM) {
-      const t = setTimeout(() => { setOpenMember(false); setMWallet(""); setMMemberId(""); setMRole(1); setMMemberType(0); setMDisclaimer(false); }, 1500);
+      if (!mWallet && mEditCode) {
+        setDisplayEditCode(mEditCode);
+        setDisplayMemberId(mMemberId);
+      }
+      const t = setTimeout(() => {
+        setOpenMember(false);
+        if (!mWallet && mEditCode) setShowEditCodeDialog(true);
+      }, 800);
       return () => clearTimeout(t);
     }
-  }, [isSuccessM]);
+  }, [isSuccessM, mWallet, mEditCode, mMemberId]);
+
+  // After program edited
+  useEffect(() => {
+    if (isSuccessEP) {
+      refetchProgram();
+      const t = setTimeout(() => setOpenEdit(false), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [isSuccessEP, refetchProgram]);
+
+  // After program deactivated
+  useEffect(() => {
+    if (isSuccessDP) {
+      refetchProgram();
+      const t = setTimeout(() => setOpenDeactivate(false), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [isSuccessDP, refetchProgram]);
+
+  const handleAssignPA = () => {
+    const wallet = (paWallet || "0x0000000000000000000000000000000000000000") as `0x${string}`;
+    let hash: `0x${string}` = "0x0000000000000000000000000000000000000000000000000000000000000000";
+    if (!paWallet && paEditCode) {
+      hash = keccak256(paEditCode);
+    }
+    assignProgramAdmin(programId, wallet, paMemberId, hash, paMemberType);
+  };
+
+  const handleAddMember = () => {
+    const wallet = (mWallet || "0x0000000000000000000000000000000000000000") as `0x${string}`;
+    let hash: `0x${string}` = "0x0000000000000000000000000000000000000000000000000000000000000000";
+    if (!mWallet && mEditCode) {
+      hash = keccak256(mEditCode);
+    }
+    addMember(programId, wallet, mMemberId, mRole, hash, mMemberType);
+  };
+
+  const handleCopyEditCode = () => {
+    navigator.clipboard.writeText(displayEditCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   if (!program) return <Typography>Loading...</Typography>;
 
   return (
     <Box>
-      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
+      {/* Header */}
+      <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, justifyContent: "space-between", mb: 3, gap: 2 }}>
         <Box sx={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
           <IconButton component={Link} href="/programs" sx={{ mt: 0.5 }} aria-label="Back to programs">
             <ArrowBackIcon />
           </IconButton>
           <Box>
-            <Typography variant="h4">{program.name}</Typography>
-            <Typography color="text.secondary">
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+              <Typography variant="h5">{program.name}</Typography>
+              {!program.active && <Chip label="Inactive" color="error" size="small" />}
+            </Box>
+            <Typography variant="body2" color="text.secondary">
               Code: {fromBytes8(program.code as `0x${string}`)} | ID: {program.id} | Transfer Limit: {transferLimit && Number(transferLimit) > 0 ? `${transferLimit}%` : "None"}
             </Typography>
-            <Typography color="text.secondary">{program.description}</Typography>
+            <Typography variant="body2" color="text.secondary">{program.description}</Typography>
           </Box>
         </Box>
-        <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
-          {isAdmin && (
-            <Button variant="contained" onClick={() => setOpenPA(true)}>
+        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "flex-start" }}>
+          {canManageProgram && program.active && (
+            <>
+              <Tooltip title="Edit program name/description">
+                <Button size="small" variant="outlined" startIcon={<EditIcon />}
+                  onClick={() => { setEditName(program.name); setEditDesc(program.description); setOpenEdit(true); }}>
+                  Edit
+                </Button>
+              </Tooltip>
+              <Tooltip title="Deactivate program">
+                <Button size="small" variant="outlined" color="error" startIcon={<BlockIcon />}
+                  onClick={() => setOpenDeactivate(true)}>
+                  Deactivate
+                </Button>
+              </Tooltip>
+            </>
+          )}
+          {canSetTransferLimit && program.active && (
+            <Button size="small" variant="outlined"
+              onClick={() => { setTlValue(String(transferLimit && Number(transferLimit) > 0 ? transferLimit : "")); setOpenTL(true); }}>
+              Transfer Limit
+            </Button>
+          )}
+          {isAdmin && program.active && (
+            <Button size="small" variant="contained" onClick={openPADialog}>
               Add Program Admin
             </Button>
           )}
-          {isAdmin && (
-            <Button variant="outlined" onClick={() => { setTlValue(String(transferLimit && Number(transferLimit) > 0 ? transferLimit : "")); setOpenTL(true); }}>
-              Set Transfer Limit
-            </Button>
-          )}
-          {canAddMembers && (
-            <Button variant="outlined" onClick={() => setOpenMember(true)}>
+          {canAddMembers && program.active && (
+            <Button size="small" variant="outlined" onClick={openMemberDialog}>
               Add Member
             </Button>
           )}
         </Box>
       </Box>
 
+      {/* My Balance */}
       {myBalance && (
         <Paper sx={{ p: 2, mb: 3 }}>
           <Typography variant="h6" gutterBottom>My Balance in this Program</Typography>
           <Grid container spacing={2}>
-            <Grid item xs={4}>
+            <Grid item xs={12} sm={4}>
               <Typography color="text.secondary" variant="body2">Available</Typography>
               <Typography variant="h6" color="success.main">{formatFula(myBalance[0])} FULA</Typography>
             </Grid>
-            <Grid item xs={4}>
+            <Grid item xs={12} sm={4}>
               <Typography color="text.secondary" variant="body2">Permanently Locked</Typography>
               <Typography variant="h6" color="error.main">{formatFula(myBalance[1])} FULA</Typography>
             </Grid>
-            <Grid item xs={4}>
+            <Grid item xs={12} sm={4}>
               <Typography color="text.secondary" variant="body2">Time-Locked</Typography>
               <Typography variant="h6" color="warning.main">{formatFula(myBalance[2])} FULA</Typography>
             </Grid>
@@ -193,48 +442,32 @@ function ProgramDetail({ programId }: { programId: number }) {
         </Paper>
       )}
 
+      {/* Reward Types & Sub-Types */}
+      {(isAdmin || canManageSubTypes) && program.active && (
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>Reward Configuration</Typography>
+          <RewardTypesSection isAdmin={isAdmin} />
+          <SubTypesSection programId={programId} canManage={canManageSubTypes} />
+        </Paper>
+      )}
+
+      {/* Members info */}
       <Paper sx={{ p: 2 }}>
         <Typography variant="h6" gutterBottom>Members</Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
-          Balance format: Available / Locked / Time-Locked
-        </Typography>
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Use the Members search page to look up specific members by ID.
+        <Alert severity="info">
+          Use the <Link href="/members" style={{ color: "#6366f1" }}>Members search page</Link> to look up and manage specific members by ID.
         </Alert>
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Member ID</TableCell>
-                <TableCell>Wallet</TableCell>
-                <TableCell>Role</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Parent</TableCell>
-                <TableCell>Balance (FULA)</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>QR</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              <TableRow>
-                <TableCell colSpan={8} align="center">
-                  <Typography variant="body2" color="text.secondary">
-                    Search for members on the Members page by their Member ID.
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </TableContainer>
       </Paper>
 
       {/* Assign ProgramAdmin Dialog */}
-      <Dialog open={openPA} onClose={() => setOpenPA(false)} maxWidth="sm" fullWidth>
+      <Dialog open={openPA} onClose={() => setOpenPA(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Assign Program Admin</DialogTitle>
         <DialogContent>
-          <TextField label="Wallet Address (leave empty for walletless)" value={paWallet} onChange={(e) => setPaWallet(e.target.value)}
+          <TextField label="Wallet Address (leave empty for walletless)" value={paWallet}
+            onChange={(e) => setPaWallet(e.target.value)}
             fullWidth margin="normal" placeholder="0x..."
-            error={!!paWallet && !paWalletValid} helperText={paWallet && !paWalletValid ? "Invalid wallet address" : "Leave empty to create walletless member"} />
+            error={!!paWallet && !paWalletValid}
+            helperText={paWallet && !paWalletValid ? "Invalid wallet address" : !paWallet ? "Walletless: an edit code will be generated for claiming" : ""} />
           <TextField label="Member ID" value={paMemberId} onChange={(e) => setPaMemberId(e.target.value)}
             fullWidth margin="normal" inputProps={{ maxLength: 12 }} />
           <FormControl fullWidth margin="normal">
@@ -245,14 +478,18 @@ function ProgramDetail({ programId }: { programId: number }) {
               ))}
             </Select>
           </FormControl>
+          {!paWallet && (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              An edit code will be generated automatically. Share it with the Program Admin so they can claim their membership and link their wallet.
+            </Alert>
+          )}
           {errorPA && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(errorPA)}</Alert>}
           {isSuccessPA && <Alert severity="success" sx={{ mt: 2 }}>Program Admin assigned!</Alert>}
           <OnChainDisclaimer accepted={paDisclaimer} onChange={setPaDisclaimer} />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenPA(false)}>Cancel</Button>
-          <Button variant="contained"
-            onClick={() => assignProgramAdmin(programId, (paWallet || "0x0000000000000000000000000000000000000000") as `0x${string}`, paMemberId, "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`, paMemberType)}
+          <Button variant="contained" onClick={handleAssignPA}
             disabled={isPendingPA || isConfirmingPA || !paMemberId || !paDisclaimer || (!!paWallet && !paWalletValid)}>
             {isPendingPA || isConfirmingPA ? <CircularProgress size={20} /> : "Assign"}
           </Button>
@@ -260,12 +497,14 @@ function ProgramDetail({ programId }: { programId: number }) {
       </Dialog>
 
       {/* Add Member Dialog */}
-      <Dialog open={openMember} onClose={() => setOpenMember(false)} maxWidth="sm" fullWidth>
+      <Dialog open={openMember} onClose={() => setOpenMember(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Add Member</DialogTitle>
         <DialogContent>
-          <TextField label="Wallet Address (leave empty for walletless)" value={mWallet} onChange={(e) => setMWallet(e.target.value)}
+          <TextField label="Wallet Address (leave empty for walletless)" value={mWallet}
+            onChange={(e) => setMWallet(e.target.value)}
             fullWidth margin="normal" placeholder="0x..."
-            error={!!mWallet && !mWalletValid} helperText={mWallet && !mWalletValid ? "Invalid wallet address" : "Leave empty to create walletless member"} />
+            error={!!mWallet && !mWalletValid}
+            helperText={mWallet && !mWalletValid ? "Invalid wallet address" : !mWallet ? "Walletless: an edit code will be generated for claiming" : ""} />
           <TextField label="Member ID" value={mMemberId} onChange={(e) => setMMemberId(e.target.value)}
             fullWidth margin="normal" inputProps={{ maxLength: 12 }} />
           <FormControl fullWidth margin="normal">
@@ -274,10 +513,7 @@ function ProgramDetail({ programId }: { programId: number }) {
               {role === MemberRoleEnum.TeamLeader ? (
                 <MenuItem value={1}>Client</MenuItem>
               ) : (
-                [
-                  <MenuItem key={2} value={2}>Team Leader</MenuItem>,
-                  <MenuItem key={1} value={1}>Client</MenuItem>,
-                ]
+                [<MenuItem key={2} value={2}>Team Leader</MenuItem>, <MenuItem key={1} value={1}>Client</MenuItem>]
               )}
             </Select>
           </FormControl>
@@ -289,14 +525,18 @@ function ProgramDetail({ programId }: { programId: number }) {
               ))}
             </Select>
           </FormControl>
+          {!mWallet && (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              An edit code will be generated automatically. Share it with the member so they can claim and link their wallet.
+            </Alert>
+          )}
           {errorM && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(errorM)}</Alert>}
           {isSuccessM && <Alert severity="success" sx={{ mt: 2 }}>Member added!</Alert>}
           <OnChainDisclaimer accepted={mDisclaimer} onChange={setMDisclaimer} />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenMember(false)}>Cancel</Button>
-          <Button variant="contained"
-            onClick={() => addMember(programId, (mWallet || "0x0000000000000000000000000000000000000000") as `0x${string}`, mMemberId, mRole, "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`, mMemberType)}
+          <Button variant="contained" onClick={handleAddMember}
             disabled={isPendingM || isConfirmingM || !mMemberId || !mDisclaimer || (!!mWallet && !mWalletValid)}>
             {isPendingM || isConfirmingM ? <CircularProgress size={20} /> : "Add"}
           </Button>
@@ -318,10 +558,76 @@ function ProgramDetail({ programId }: { programId: number }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenTL(false)}>Cancel</Button>
-          <Button variant="contained"
-            onClick={() => setTransferLimit(programId, parseInt(tlValue) || 0)}
+          <Button variant="contained" onClick={() => setTransferLimit(programId, parseInt(tlValue) || 0)}
             disabled={isPendingTL || isConfirmingTL}>
             {isPendingTL || isConfirmingTL ? <CircularProgress size={20} /> : "Set Limit"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Program Dialog */}
+      <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
+        <DialogTitle>Edit Program</DialogTitle>
+        <DialogContent>
+          <TextField label="Program Name" value={editName} onChange={(e) => setEditName(e.target.value)}
+            fullWidth margin="normal" />
+          <TextField label="Description" value={editDesc} onChange={(e) => setEditDesc(e.target.value)}
+            fullWidth margin="normal" multiline rows={3} />
+          {errorEP && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(errorEP)}</Alert>}
+          {isSuccessEP && <Alert severity="success" sx={{ mt: 2 }}>Program updated!</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenEdit(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => updateProgram(programId, editName, editDesc)}
+            disabled={isPendingEP || isConfirmingEP || !editName}>
+            {isPendingEP || isConfirmingEP ? <CircularProgress size={20} /> : "Save"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Deactivate Confirm Dialog */}
+      <Dialog open={openDeactivate} onClose={() => setOpenDeactivate(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Deactivate Program</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning">
+            Are you sure you want to deactivate &quot;{program.name}&quot;? This will prevent all operations on the program. This action cannot be undone.
+          </Alert>
+          {errorDP && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(errorDP)}</Alert>}
+          {isSuccessDP && <Alert severity="success" sx={{ mt: 2 }}>Program deactivated.</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenDeactivate(false)}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={() => deactivateProgram(programId)}
+            disabled={isPendingDP || isConfirmingDP}>
+            {isPendingDP || isConfirmingDP ? <CircularProgress size={20} /> : "Deactivate"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Code Display Dialog (shown after walletless member creation) */}
+      <Dialog open={showEditCodeDialog} onClose={() => setShowEditCodeDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Code Generated</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Save this edit code now. It cannot be retrieved later. Share it with &quot;{displayMemberId}&quot; so they can claim their membership.
+          </Alert>
+          <Paper sx={{ p: 2, bgcolor: "background.default", display: "flex", alignItems: "center", gap: 1 }}>
+            <Typography variant="body2" sx={{ fontFamily: "monospace", wordBreak: "break-all", flexGrow: 1 }}>
+              {displayEditCode}
+            </Typography>
+            <Tooltip title={copied ? "Copied!" : "Copy to clipboard"}>
+              <IconButton onClick={handleCopyEditCode} size="small">
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Paper>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+            Member ID: {displayMemberId} | Program ID: {programId}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setShowEditCodeDialog(false)}>
+            I&apos;ve Saved the Code
           </Button>
         </DialogActions>
       </Dialog>
@@ -332,6 +638,8 @@ function ProgramDetail({ programId }: { programId: number }) {
 /* -- Program List View -- */
 
 function ProgramList() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { isAdmin } = useUserRole();
   const { data: programCount } = useProgramCount();
   const { createProgram, isPending, isConfirming, isSuccess, error } = useCreateProgram();
@@ -342,7 +650,6 @@ function ProgramList() {
   const [description, setDescription] = useState("");
   const [disclaimer, setDisclaimer] = useState(false);
 
-  // Reset and close dialog on success
   useEffect(() => {
     if (isSuccess) {
       const t = setTimeout(() => { setOpen(false); setCode(""); setName(""); setDescription(""); setDisclaimer(false); }, 1500);
@@ -350,16 +657,11 @@ function ProgramList() {
     }
   }, [isSuccess]);
 
-  const handleCreate = () => {
-    if (!code || !name) return;
-    createProgram(code, name, description);
-  };
-
   const count = Number(programCount || 0);
 
   return (
     <Box>
-      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3, flexWrap: "wrap", gap: 1 }}>
         <Typography variant="h4">Programs</Typography>
         {isAdmin && (
           <Button variant="contained" onClick={() => setOpen(true)}>
@@ -375,7 +677,7 @@ function ProgramList() {
               <TableCell>ID</TableCell>
               <TableCell>Code</TableCell>
               <TableCell>Name</TableCell>
-              <TableCell>Description</TableCell>
+              <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>Description</TableCell>
               <TableCell>Status</TableCell>
             </TableRow>
           </TableHead>
@@ -385,15 +687,13 @@ function ProgramList() {
                 <TableCell colSpan={5} align="center">No programs yet.</TableCell>
               </TableRow>
             ) : (
-              Array.from({ length: count }, (_, i) => (
-                <ProgramRow key={i + 1} programId={i + 1} />
-              ))
+              Array.from({ length: count }, (_, i) => <ProgramRow key={i + 1} programId={i + 1} />)
             )}
           </TableBody>
         </Table>
       </TableContainer>
 
-      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Create New Program</DialogTitle>
         <DialogContent>
           <TextField label="Program Code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
@@ -408,7 +708,8 @@ function ProgramList() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreate} disabled={isPending || isConfirming || !code || !name || !disclaimer}>
+          <Button variant="contained" onClick={() => createProgram(code, name, description)}
+            disabled={isPending || isConfirming || !code || !name || !disclaimer}>
             {isPending || isConfirming ? <CircularProgress size={20} /> : "Create"}
           </Button>
         </DialogActions>
@@ -417,16 +718,14 @@ function ProgramList() {
   );
 }
 
-/* -- Router: list vs detail based on ?id= -- */
+/* -- Router -- */
 
 function ProgramsContent() {
   const searchParams = useSearchParams();
   const idParam = searchParams.get("id");
   const programId = idParam ? parseInt(idParam) : 0;
 
-  if (programId > 0) {
-    return <ProgramDetail programId={programId} />;
-  }
+  if (programId > 0) return <ProgramDetail programId={programId} />;
   return <ProgramList />;
 }
 

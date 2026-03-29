@@ -5,7 +5,7 @@ import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 
 import { useAccount } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, ERC20_ABI } from "@/config/contracts";
-import { toBytes8, toBytes12, safeParseAmount } from "@/lib/utils";
+import { toBytes8, toBytes12, toBytes16, safeParseAmount } from "@/lib/utils";
 
 // === READ HOOKS ===
 
@@ -311,12 +311,12 @@ export function useAddRewardType() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   useRefetchOnSuccess(isSuccess);
 
-  const addRewardType = (typeId: number, name: `0x${string}`) => {
+  const addRewardType = (typeId: number, name: string) => {
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "addRewardType",
-      args: [typeId, name],
+      args: [typeId, toBytes16(name)],
     });
   };
 
@@ -328,12 +328,12 @@ export function useAddSubType() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   useRefetchOnSuccess(isSuccess);
 
-  const addSubType = (programId: number, rewardType: number, subTypeId: number, name: `0x${string}`) => {
+  const addSubType = (programId: number, rewardType: number, subTypeId: number, name: string) => {
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "addSubType",
-      args: [programId, rewardType, subTypeId, name],
+      args: [programId, rewardType, subTypeId, toBytes16(name)],
     });
   };
 
@@ -365,6 +365,108 @@ export function useSetTransferLimit() {
   };
 
   return { setTransferLimit, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useUpdateProgram() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const updateProgram = (programId: number, name: string, description: string) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "updateProgram",
+      args: [programId, name, description],
+    });
+  };
+
+  return { updateProgram, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useDeactivateProgram() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const deactivateProgram = (programId: number) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "deactivateProgram",
+      args: [programId],
+    });
+  };
+
+  return { deactivateProgram, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useSetEditCodeHash() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const setEditCodeHash = (programId: number, memberID: string, newHash: `0x${string}`) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "setEditCodeHash",
+      args: [programId, toBytes12(memberID), newHash],
+    });
+  };
+
+  return { setEditCodeHash, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useRemoveRewardType() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const removeRewardType = (typeId: number) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "removeRewardType",
+      args: [typeId],
+    });
+  };
+
+  return { removeRewardType, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useRemoveSubType() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const removeSubType = (programId: number, rewardType: number, subTypeId: number) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "removeSubType",
+      args: [programId, rewardType, subTypeId],
+    });
+  };
+
+  return { removeSubType, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useUpdateMemberID() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const updateMemberID = (programId: number, oldMemberID: string, newMemberID: string) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "updateMemberID",
+      args: [programId, toBytes12(oldMemberID), toBytes12(newMemberID)],
+    });
+  };
+
+  return { updateMemberID, isPending, isConfirming, isSuccess, error, hash };
 }
 
 export function useAddTokensDetailed() {
