@@ -6,7 +6,9 @@ import {
   TableContainer, TableHead, TableRow, TextField, Button,
   Select, MenuItem, FormControl, InputLabel, Alert, Chip,
   LinearProgress, TablePagination, useMediaQuery, useTheme,
+  InputAdornment,
 } from "@mui/material";
+import { parseUnits } from "viem";
 import { CONTRACTS } from "@/config/contracts";
 import { useRewardTypes } from "@/hooks/useRewardsProgram";
 import { useChunkedEventLogs, type TimeRange } from "@/hooks/useChunkedEventLogs";
@@ -18,11 +20,17 @@ export default function ReportsPage() {
   const { data: rewardTypesData } = useRewardTypes();
 
   const [filterProgramId, setFilterProgramId] = useState("");
-  const [filterRewardType, setFilterRewardType] = useState<number | "">("");
   const [timeRange, setTimeRange] = useState<TimeRange>("7d");
   const [trigger, setTrigger] = useState(0);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+
+  // Client-side filters
+  const [filterEventType, setFilterEventType] = useState<string>("");
+  const [filterRewardType, setFilterRewardType] = useState<number | "">("");
+  const [filterWallet, setFilterWallet] = useState("");
+  const [filterAmountMin, setFilterAmountMin] = useState("");
+  const [filterAmountMax, setFilterAmountMax] = useState("");
 
   const {
     events, loading, progress, totalChunks, completedChunks, error, cancel,
@@ -33,10 +41,30 @@ export default function ReportsPage() {
     trigger,
   });
 
-  // Client-side reward type filter
-  const filteredEvents = filterRewardType !== ""
-    ? events.filter(r => r.type !== "Deposit" || r.rewardType === filterRewardType)
-    : events;
+  // Client-side filter chain
+  let filteredEvents = events;
+  if (filterEventType) {
+    filteredEvents = filteredEvents.filter(e => e.type === filterEventType);
+  }
+  if (filterRewardType !== "") {
+    filteredEvents = filteredEvents.filter(r => r.type !== "Deposit" || r.rewardType === filterRewardType);
+  }
+  if (filterWallet) {
+    const w = filterWallet.toLowerCase();
+    filteredEvents = filteredEvents.filter(e => e.wallet.toLowerCase().includes(w));
+  }
+  if (filterAmountMin) {
+    try {
+      const min = parseUnits(filterAmountMin, 18);
+      filteredEvents = filteredEvents.filter(e => e.amount >= min);
+    } catch { /* invalid input, skip */ }
+  }
+  if (filterAmountMax) {
+    try {
+      const max = parseUnits(filterAmountMax, 18);
+      filteredEvents = filteredEvents.filter(e => e.amount <= max);
+    } catch { /* invalid input, skip */ }
+  }
 
   // Summary stats
   const totalDeposits = filteredEvents.filter(e => e.type === "Deposit").reduce((s, e) => s + e.amount, BigInt(0));
@@ -60,10 +88,11 @@ export default function ReportsPage() {
     }
   };
 
-  // Pagination
+  // Pagination — clamp page if filters reduce result count
+  const safePage = page * rowsPerPage >= filteredEvents.length && filteredEvents.length > 0 ? 0 : page;
   const paginatedEvents = filteredEvents.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
+    safePage * rowsPerPage,
+    safePage * rowsPerPage + rowsPerPage
   );
 
   return (
@@ -71,14 +100,14 @@ export default function ReportsPage() {
       <Typography variant="h4" gutterBottom>Reports</Typography>
 
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Filters</Typography>
+        <Typography variant="h6" gutterBottom>Fetch Settings</Typography>
         <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={3}>
+          <Grid item xs={12} sm={4}>
             <TextField label="Program ID" value={filterProgramId}
               onChange={(e) => setFilterProgramId(e.target.value)}
               type="number" fullWidth size="small" placeholder="All programs" />
           </Grid>
-          <Grid item xs={12} sm={3}>
+          <Grid item xs={12} sm={4}>
             <FormControl fullWidth size="small">
               <InputLabel>Time Range</InputLabel>
               <Select value={timeRange} onChange={(e) => setTimeRange(e.target.value as TimeRange)} label="Time Range">
@@ -89,18 +118,7 @@ export default function ReportsPage() {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12} sm={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Reward Type</InputLabel>
-              <Select value={filterRewardType} onChange={(e) => setFilterRewardType(e.target.value as number | "")} label="Reward Type">
-                <MenuItem value="">All</MenuItem>
-                {Object.entries(rewardTypeNames).map(([k, v]) => (
-                  <MenuItem key={k} value={Number(k)}>{v}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} sm={3}>
+          <Grid item xs={12} sm={4}>
             <Button
               variant="contained"
               onClick={handleGenerate}
@@ -112,6 +130,54 @@ export default function ReportsPage() {
           </Grid>
         </Grid>
       </Paper>
+
+      {events.length > 0 && (
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>Filter Results</Typography>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Event Type</InputLabel>
+                <Select value={filterEventType} onChange={(e) => { setFilterEventType(e.target.value); setPage(0); }} label="Event Type">
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="Deposit">Deposit</MenuItem>
+                  <MenuItem value="Transfer">Transfer</MenuItem>
+                  <MenuItem value="TransferToParent">To Parent</MenuItem>
+                  <MenuItem value="Withdrawal">Withdrawal</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Reward Type</InputLabel>
+                <Select value={filterRewardType} onChange={(e) => { setFilterRewardType(e.target.value as number | ""); setPage(0); }} label="Reward Type">
+                  <MenuItem value="">All</MenuItem>
+                  {Object.entries(rewardTypeNames).map(([k, v]) => (
+                    <MenuItem key={k} value={Number(k)}>{v}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField label="Wallet Address" value={filterWallet}
+                onChange={(e) => { setFilterWallet(e.target.value); setPage(0); }}
+                fullWidth size="small" placeholder="0x..." />
+            </Grid>
+            <Grid item xs={6} sm={2}>
+              <TextField label="Min Amount" value={filterAmountMin}
+                onChange={(e) => { setFilterAmountMin(e.target.value); setPage(0); }}
+                type="number" fullWidth size="small"
+                InputProps={{ endAdornment: <InputAdornment position="end">FULA</InputAdornment> }} />
+            </Grid>
+            <Grid item xs={6} sm={2}>
+              <TextField label="Max Amount" value={filterAmountMax}
+                onChange={(e) => { setFilterAmountMax(e.target.value); setPage(0); }}
+                type="number" fullWidth size="small"
+                InputProps={{ endAdornment: <InputAdornment position="end">FULA</InputAdornment> }} />
+            </Grid>
+          </Grid>
+        </Paper>
+      )}
 
       {loading && (
         <Paper sx={{ p: 2, mb: 3 }}>
@@ -203,7 +269,7 @@ export default function ReportsPage() {
             <TablePagination
               component="div"
               count={filteredEvents.length}
-              page={page}
+              page={safePage}
               onPageChange={(_, p) => setPage(p)}
               rowsPerPage={rowsPerPage}
               onRowsPerPageChange={(e) => {
