@@ -20,6 +20,12 @@ const theme = createTheme({
     fontFamily: "'Inter', sans-serif",
   },
   components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        html: { overflowX: "hidden" },
+        body: { overflowX: "hidden" },
+      },
+    },
     MuiButton: {
       styleOverrides: {
         root: { textTransform: "none", borderRadius: 8 },
@@ -27,7 +33,12 @@ const theme = createTheme({
     },
     MuiPaper: {
       styleOverrides: {
-        root: { borderRadius: 12 },
+        root: { borderRadius: 12, maxWidth: "100%", boxSizing: "border-box" },
+      },
+    },
+    MuiTextField: {
+      styleOverrides: {
+        root: { maxWidth: "100%" },
       },
     },
   },

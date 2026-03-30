@@ -11,9 +11,9 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
       <Navigation mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
-      <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", width: { md: `calc(100% - ${DRAWER_WIDTH}px)` } }}>
+      <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }, minWidth: 0, overflow: "hidden" }}>
         <Header onMenuToggle={() => setMobileOpen(!mobileOpen)} />
-        <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+        <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 3 }, overflow: "hidden", maxWidth: "100%" }}>
           {children}
         </Box>
         <Box component="footer" sx={{ p: 2, borderTop: 1, borderColor: "divider" }}>
