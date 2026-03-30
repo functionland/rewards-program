@@ -39,18 +39,18 @@ function generateEditCode(): `0x${string}` {
 
 /* -- Program List Row -- */
 
-function ProgramRow({ programId, filterMine, wallet }: { programId: number; filterMine?: boolean; wallet?: `0x${string}` }) {
+function ProgramRow({ programId, filterMine, wallet, isAdmin }: { programId: number; filterMine?: boolean; wallet?: `0x${string}`; isAdmin?: boolean }) {
   const { data: program } = useProgram(programId);
   const { data: member } = useReadContract({
     address: CONTRACTS.rewardsProgram,
     abi: REWARDS_PROGRAM_ABI,
     functionName: "getMember",
     args: wallet ? [programId, wallet] : undefined,
-    query: { enabled: !!filterMine && !!wallet },
+    query: { enabled: !!filterMine && !isAdmin && !!wallet },
   });
 
   if (!program) return null;
-  if (filterMine && (!member || !member.active)) return null;
+  if (filterMine && !isAdmin && (!member || !member.active)) return null;
 
   return (
     <TableRow hover>
@@ -63,6 +63,11 @@ function ProgramRow({ programId, filterMine, wallet }: { programId: number; filt
       </TableCell>
       <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>{program.description}</TableCell>
       <TableCell>{program.active ? <Chip label="Active" color="success" size="small" /> : <Chip label="Inactive" size="small" />}</TableCell>
+      <TableCell>
+        <Button component={Link} href={`/programs?id=${program.id}`} size="small" variant="outlined">
+          Open
+        </Button>
+      </TableCell>
     </TableRow>
   );
 }
@@ -577,11 +582,13 @@ function ProgramDetail({ programId }: { programId: number }) {
           {isSuccessTL && <Alert severity="success" sx={{ mt: 2 }}>Transfer limit updated!</Alert>}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenTL(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => setTransferLimit(programId, parseInt(tlValue) || 0)}
-            disabled={isPendingTL || isConfirmingTL}>
-            {isPendingTL || isConfirmingTL ? <CircularProgress size={20} /> : "Set Limit"}
-          </Button>
+          <Button onClick={() => setOpenTL(false)}>{isSuccessTL ? "Close" : "Cancel"}</Button>
+          {!isSuccessTL && (
+            <Button variant="contained" onClick={() => setTransferLimit(programId, parseInt(tlValue) || 0)}
+              disabled={isPendingTL || isConfirmingTL}>
+              {isPendingTL || isConfirmingTL ? <CircularProgress size={20} /> : "Set Limit"}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 
@@ -752,18 +759,20 @@ function ProgramList() {
               <TableCell>Name</TableCell>
               <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>Description</TableCell>
               <TableCell>Status</TableCell>
+              <TableCell></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {programIds.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} align="center">No programs yet.</TableCell>
+                <TableCell colSpan={6} align="center">No programs yet.</TableCell>
               </TableRow>
             ) : (
               programIds.map(id => (
                 <ProgramRow key={id} programId={id}
                   filterMine={filterMode === "mine"}
-                  wallet={address} />
+                  wallet={address}
+                  isAdmin={isAdmin} />
               ))
             )}
           </TableBody>

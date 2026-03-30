@@ -59,7 +59,7 @@ function MemberProgramRow({ memberID, programId }: { memberID: string; programId
       <TableCell sx={{ color: "warning.main", display: { xs: "none", sm: "table-cell" } }}>{balance ? formatFula(balance[2]) : "-"}</TableCell>
       <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>{member.active ? "Active" : "Inactive"}</TableCell>
       <TableCell>
-        <QRCodeDisplay programId={programId} memberID={memberID} size={64} />
+        <QRCodeDisplay programId={programId} memberID={memberID} size={120} />
       </TableCell>
     </TableRow>
   );
