@@ -7,7 +7,7 @@ export const CONTRACTS = {
   fulaToken: (process.env.NEXT_PUBLIC_FULA_TOKEN_ADDRESS || "0x9e12735d77c72c5C3670636D428f2F3815d8A4cB") as Address,
 };
 
-export const ADMIN_ROLE = "0xdf8b4c520ffe197c5343c6f5aec59570151ef9a492f2c624fd45ddde6135ec42"; // keccak256("ADMIN_ROLE")
+export const ADMIN_ROLE = "0xa49807205ce4d355092ef5a8a18f56e8913cf4a201fbe287825b095693c21775"; // keccak256("ADMIN_ROLE")
 
 export const MemberRoleEnum = {
   None: 0,
