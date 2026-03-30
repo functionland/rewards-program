@@ -37,6 +37,9 @@ export const MemberTypeLabels: Record<number, string> = {
   3: "PS Partner",
 };
 
+// Deployment block — avoids scanning empty blocks before the contract existed
+export const DEPLOYMENT_BLOCK = BigInt(process.env.NEXT_PUBLIC_DEPLOYMENT_BLOCK || "0");
+
 // RewardsProgram ABI (minimal - key functions only)
 export const REWARDS_PROGRAM_ABI = [
   // Read functions
