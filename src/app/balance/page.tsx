@@ -67,11 +67,13 @@ function MemberProgramRow({ memberID, programId }: { memberID: string; programId
 
 /* -- Claim Member Section -- */
 
-function ClaimMemberSection({ memberID, programCount }: { memberID: string; programCount: number }) {
+function ClaimMemberSection({ memberID, programCount, initialProgramId, initialEditCode }: {
+  memberID: string; programCount: number; initialProgramId?: string; initialEditCode?: string;
+}) {
   const { address, isConnected } = useAccount();
   const { claimMember, isPending, isConfirming, isSuccess, error } = useClaimMember();
-  const [editCode, setEditCode] = useState("");
-  const [claimProgramId, setClaimProgramId] = useState("1");
+  const [editCode, setEditCode] = useState(initialEditCode || "");
+  const [claimProgramId, setClaimProgramId] = useState(initialProgramId || "1");
   const [disclaimer, setDisclaimer] = useState(false);
 
   useEffect(() => {
@@ -248,6 +250,8 @@ function BalanceContent() {
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const searchParams = useSearchParams();
   const memberParam = searchParams.get("member") || "";
+  const claimParam = searchParams.get("claim") || "";
+  const codeParam = searchParams.get("code") || "";
   const [memberID, setMemberID] = useState(memberParam);
   const [searchID, setSearchID] = useState(memberParam);
 
@@ -339,7 +343,8 @@ function BalanceContent() {
           {memberExists && !memberWallet && (
             <>
               <Alert severity="info" sx={{ mb: 2 }}>Member &quot;{searchID}&quot; exists but has no linked wallet (walletless member).</Alert>
-              <ClaimMemberSection memberID={searchID} programCount={count} />
+              <ClaimMemberSection memberID={searchID} programCount={count}
+                initialProgramId={claimParam} initialEditCode={codeParam} />
             </>
           )}
 

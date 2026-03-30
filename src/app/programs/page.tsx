@@ -39,9 +39,18 @@ function generateEditCode(): `0x${string}` {
 
 /* -- Program List Row -- */
 
-function ProgramRow({ programId }: { programId: number }) {
+function ProgramRow({ programId, filterMine, wallet }: { programId: number; filterMine?: boolean; wallet?: `0x${string}` }) {
   const { data: program } = useProgram(programId);
+  const { data: member } = useReadContract({
+    address: CONTRACTS.rewardsProgram,
+    abi: REWARDS_PROGRAM_ABI,
+    functionName: "getMember",
+    args: wallet ? [programId, wallet] : undefined,
+    query: { enabled: !!filterMine && !!wallet },
+  });
+
   if (!program) return null;
+  if (filterMine && (!member || !member.active)) return null;
 
   return (
     <TableRow hover>
@@ -273,6 +282,7 @@ function ProgramDetail({ programId }: { programId: number }) {
   const [displayEditCode, setDisplayEditCode] = useState("");
   const [displayMemberId, setDisplayMemberId] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
   const paWalletValid = !paWallet || isValidAddress(paWallet);
   const mWalletValid = !mWallet || isValidAddress(mWallet);
@@ -358,10 +368,20 @@ function ProgramDetail({ programId }: { programId: number }) {
     addMember(programId, wallet, mMemberId, mRole, hash, mMemberType);
   };
 
+  const claimUrl = displayEditCode && displayMemberId
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/balance?member=${encodeURIComponent(displayMemberId)}&claim=${programId}&code=${encodeURIComponent(displayEditCode)}`
+    : "";
+
   const handleCopyEditCode = () => {
     navigator.clipboard.writeText(displayEditCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyUrl = () => {
+    navigator.clipboard.writeText(claimUrl);
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2000);
   };
 
   if (!program) return <Typography>Loading...</Typography>;
@@ -611,12 +631,24 @@ function ProgramDetail({ programId }: { programId: number }) {
           <Alert severity="warning" sx={{ mb: 2 }}>
             Save this edit code now. It cannot be retrieved later. Share it with &quot;{displayMemberId}&quot; so they can claim their membership.
           </Alert>
-          <Paper sx={{ p: 2, bgcolor: "background.default", display: "flex", alignItems: "center", gap: 1 }}>
+          <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Edit Code</Typography>
+          <Paper sx={{ p: 2, bgcolor: "background.default", display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
             <Typography variant="body2" sx={{ fontFamily: "monospace", wordBreak: "break-all", flexGrow: 1 }}>
               {displayEditCode}
             </Typography>
-            <Tooltip title={copied ? "Copied!" : "Copy to clipboard"}>
+            <Tooltip title={copied ? "Copied!" : "Copy code"}>
               <IconButton onClick={handleCopyEditCode} size="small">
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Paper>
+          <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Claim URL (share with member)</Typography>
+          <Paper sx={{ p: 2, bgcolor: "background.default", display: "flex", alignItems: "center", gap: 1 }}>
+            <Typography variant="body2" sx={{ fontFamily: "monospace", wordBreak: "break-all", flexGrow: 1, fontSize: "0.75rem" }}>
+              {claimUrl}
+            </Typography>
+            <Tooltip title={copiedUrl ? "Copied!" : "Copy URL"}>
+              <IconButton onClick={handleCopyUrl} size="small">
                 <ContentCopyIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -640,8 +672,9 @@ function ProgramDetail({ programId }: { programId: number }) {
 function ProgramList() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const { address } = useAccount();
   const { isAdmin } = useUserRole();
-  const { data: programCount } = useProgramCount();
+  const { data: programCount, refetch: refetchCount } = useProgramCount();
   const { createProgram, isPending, isConfirming, isSuccess, error } = useCreateProgram();
 
   const [open, setOpen] = useState(false);
@@ -650,14 +683,28 @@ function ProgramList() {
   const [description, setDescription] = useState("");
   const [disclaimer, setDisclaimer] = useState(false);
 
+  // Filters
+  const [filterMode, setFilterMode] = useState<"all" | "mine">("all");
+  const [searchId, setSearchId] = useState("");
+
   useEffect(() => {
     if (isSuccess) {
+      refetchCount();
       const t = setTimeout(() => { setOpen(false); setCode(""); setName(""); setDescription(""); setDisclaimer(false); }, 1500);
       return () => clearTimeout(t);
     }
-  }, [isSuccess]);
+  }, [isSuccess, refetchCount]);
 
   const count = Number(programCount || 0);
+  const searchProgramId = searchId ? parseInt(searchId) : 0;
+
+  // Build list of program IDs to show
+  let programIds: number[];
+  if (searchProgramId > 0 && searchProgramId <= count) {
+    programIds = [searchProgramId];
+  } else {
+    programIds = Array.from({ length: count }, (_, i) => i + 1);
+  }
 
   return (
     <Box>
@@ -669,6 +716,32 @@ function ProgramList() {
           </Button>
         )}
       </Box>
+
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={4}>
+            <TextField label="Search by Program ID" value={searchId}
+              onChange={(e) => setSearchId(e.target.value)}
+              type="number" fullWidth size="small" placeholder="All programs"
+              helperText={searchProgramId > count ? `Max ID is ${count}` : undefined}
+              error={searchProgramId > count} />
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Show</InputLabel>
+              <Select value={filterMode} onChange={(e) => setFilterMode(e.target.value as "all" | "mine")} label="Show">
+                <MenuItem value="all">All Programs</MenuItem>
+                <MenuItem value="mine" disabled={!address}>My Programs</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Typography variant="body2" color="text.secondary">
+              {count} program{count !== 1 ? "s" : ""} total
+            </Typography>
+          </Grid>
+        </Grid>
+      </Paper>
 
       <TableContainer component={Paper}>
         <Table>
@@ -682,12 +755,16 @@ function ProgramList() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {count === 0 ? (
+            {programIds.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} align="center">No programs yet.</TableCell>
               </TableRow>
             ) : (
-              Array.from({ length: count }, (_, i) => <ProgramRow key={i + 1} programId={i + 1} />)
+              programIds.map(id => (
+                <ProgramRow key={id} programId={id}
+                  filterMine={filterMode === "mine"}
+                  wallet={address} />
+              ))
             )}
           </TableBody>
         </Table>
