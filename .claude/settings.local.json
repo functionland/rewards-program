@@ -18,7 +18,24 @@
       "Bash(find /mnt/e/GitHub/rewards-program/src -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))",
       "Bash(xargs ls:*)",
       "Bash(npm run:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(find /mnt/e/GitHub/fula-chain -type f -name *test*rewards* -o -name *rewards*test*)",
+      "Bash(grep:*)",
+      "Bash(python3:*)",
+      "Bash(ls /mnt/e/GitHub/rewards-program/README* /mnt/e/GitHub/rewards-program/readme*)",
+      "Bash(ls /mnt/e/GitHub/rewards-program/*.md)",
+      "Bash(find /mnt/e/GitHub/fula-chain/test -name *.js -o -name *.ts)",
+      "Bash(cast keccak:*)",
+      "Bash(npx viem:*)",
+      "Bash(find /mnt/e/GitHub/rewards-program -name *.sol -type f)",
+      "Bash(find /mnt/e/GitHub/rewards-program -type f \\\\\\(-name *.sol -o -name *Rewards* -o -name *Member* \\\\\\))",
+      "Bash(find /mnt/e/GitHub/rewards-program -type f -name *.md -o -name *contract* -o -name *abi*)",
+      "Bash(find /mnt/e/GitHub -name *.sol -type f)",
+      "Bash(find /mnt/e/GitHub/fula-chain -name *.sol -type f)",
+      "Bash(find /mnt/e/GitHub/fula-chain -name *.sol -path */test* -o -name *Test* -o -name *test*)",
+      "Bash(find /mnt/e/GitHub -name *.test.ts -o -name *.spec.ts)",
+      "Bash(find /mnt/e/GitHub/fula-chain -name *.ts -o -name *.js)",
+      "Bash(find /mnt/e/GitHub/fula-chain -type f \\\\\\(-name *.test.ts -o -name *.spec.ts -o -name *test*.ts \\\\\\))"
     ]
   }
 }

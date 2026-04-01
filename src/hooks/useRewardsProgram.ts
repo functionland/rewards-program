@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { useAccount } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
+import { readContract, writeContract as writeContractAction, waitForTransactionReceipt } from "wagmi/actions";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, ERC20_ABI } from "@/config/contracts";
 import { toBytes8, toBytes12, toBytes16, safeParseAmount } from "@/lib/utils";
+import { wagmiConfig } from "@/lib/wagmi";
 
 // === READ HOOKS ===
 
@@ -137,42 +139,66 @@ export function useAddMember() {
   return { addMember, isPending, isConfirming, isSuccess, error, hash };
 }
 
-export function useApproveToken() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
-  useRefetchOnSuccess(isSuccess);
+export function useDepositTokens() {
+  const { address } = useAccount();
+  const queryClient = useQueryClient();
+  const [status, setStatus] = useState<"idle" | "approving" | "depositing" | "success">("idle");
+  const [error, setError] = useState<Error | null>(null);
 
-  const approve = (amount: string) => {
+  const deposit = useCallback(async (programId: number, amount: string, rewardType: number = 0, note: string = "") => {
     const parsed = safeParseAmount(amount);
-    if (!parsed) return;
-    writeContract({
-      address: CONTRACTS.fulaToken,
-      abi: ERC20_ABI,
-      functionName: "approve",
-      args: [CONTRACTS.rewardsProgram, parsed],
-    });
+    if (!parsed || !address) return;
+
+    setStatus("approving");
+    setError(null);
+
+    try {
+      // Check current allowance
+      const allowance = await readContract(wagmiConfig, {
+        address: CONTRACTS.fulaToken,
+        abi: ERC20_ABI,
+        functionName: "allowance",
+        args: [address, CONTRACTS.rewardsProgram],
+      });
+
+      // Approve if needed
+      if (allowance < parsed) {
+        const approveHash = await writeContractAction(wagmiConfig, {
+          address: CONTRACTS.fulaToken,
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [CONTRACTS.rewardsProgram, parsed],
+        });
+        await waitForTransactionReceipt(wagmiConfig, { hash: approveHash });
+      }
+
+      // Deposit
+      setStatus("depositing");
+      const depositHash = await writeContractAction(wagmiConfig, {
+        address: CONTRACTS.rewardsProgram,
+        abi: REWARDS_PROGRAM_ABI,
+        functionName: "addTokens",
+        args: [programId, parsed, rewardType, note],
+      });
+      await waitForTransactionReceipt(wagmiConfig, { hash: depositHash });
+
+      setStatus("success");
+      queryClient.invalidateQueries();
+    } catch (e) {
+      setError(e instanceof Error ? e : new Error(String(e)));
+      setStatus("idle");
+    }
+  }, [address, queryClient]);
+
+  return {
+    deposit,
+    isApproving: status === "approving",
+    isDepositing: status === "depositing",
+    isPending: status === "approving" || status === "depositing",
+    isSuccess: status === "success",
+    error,
+    reset: () => { setStatus("idle"); setError(null); },
   };
-
-  return { approve, isPending, isConfirming, isSuccess, error, hash };
-}
-
-export function useAddTokens() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
-  useRefetchOnSuccess(isSuccess);
-
-  const addTokens = (programId: number, amount: string, rewardType: number = 0, note: string = "") => {
-    const parsed = safeParseAmount(amount);
-    if (!parsed) return;
-    writeContract({
-      address: CONTRACTS.rewardsProgram,
-      abi: REWARDS_PROGRAM_ABI,
-      functionName: "addTokens",
-      args: [programId, parsed, rewardType, note],
-    });
-  };
-
-  return { addTokens, isPending, isConfirming, isSuccess, error, hash };
 }
 
 export function useTransferToSubMember() {

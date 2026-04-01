@@ -158,7 +158,7 @@ export default function MembersPage() {
           <TextField
             label={searchType === "memberID" ? "Member ID (= Reward ID)" : "Program Code"}
             value={searchValue}
-            onChange={(e) => { setSearchValue(e.target.value); setSearchTriggered(false); }}
+            onChange={(e) => { setSearchValue(searchType === "programCode" ? e.target.value.toUpperCase() : e.target.value); setSearchTriggered(false); }}
             sx={{ flexGrow: 1, minWidth: 150 }}
             inputProps={{ maxLength: searchType === "memberID" ? 12 : 8 }}
           />

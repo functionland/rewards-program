@@ -10,7 +10,7 @@ import { useAccount } from "wagmi";
 import { readContract } from "wagmi/actions";
 import { zeroAddress } from "viem";
 import {
-  useApproveToken, useAddTokens, useTransferToSubMember, useTransferToParent,
+  useDepositTokens, useTransferToSubMember, useTransferToParent,
   useWithdraw, useMemberBalance, useTokenBalance, useRewardTypes, useTransferLimit,
 } from "@/hooks/useRewardsProgram";
 import { formatFula, toBytes12, isValidAddress, formatContractError, fromBytes16 } from "@/lib/utils";
@@ -44,8 +44,7 @@ export default function TokensPage() {
   const [depositRewardType, setDepositRewardType] = useState(0);
   const [depositNote, setDepositNote] = useState("");
   const [depositDisclaimer, setDepositDisclaimer] = useState(false);
-  const { approve, isPending: isApproving, isConfirming: isAppConfirming, isSuccess: approveSuccess } = useApproveToken();
-  const { addTokens, isPending: isDepositing, isConfirming: isDepConfirming, isSuccess: depositSuccess, error: depositError } = useAddTokens();
+  const { deposit: depositTokens, isApproving, isDepositing, isPending: isDepositPending, isSuccess: depositSuccess, error: depositError } = useDepositTokens();
 
   // Transfer state
   const [transferTo, setTransferTo] = useState("");
@@ -147,7 +146,7 @@ export default function TokensPage() {
         {/* DEPOSIT */}
         <TabPanel value={tab} index={0}>
           <Typography variant="body2" color="text.secondary" gutterBottom>
-            Step 1: Approve FULA tokens. Step 2: Deposit into the program.
+            Deposit FULA tokens into the program. Approval is handled automatically.
           </Typography>
           <TextField label="Amount (FULA)" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)}
             fullWidth margin="normal" type="number" />
@@ -168,16 +167,13 @@ export default function TokensPage() {
             helperText={`${depositNote.length}/128`} />
           <OnChainDisclaimer accepted={depositDisclaimer} onChange={setDepositDisclaimer} />
           <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
-            <Button variant="outlined" onClick={() => approve(depositAmount)}
-              disabled={isApproving || isAppConfirming || !depositAmount || !depositDisclaimer}>
-              {isApproving || isAppConfirming ? <CircularProgress size={20} /> : "1. Approve"}
-            </Button>
-            <Button variant="contained" onClick={() => addTokens(pid, depositAmount, depositRewardType, depositNote)}
-              disabled={isDepositing || isDepConfirming || !depositAmount || !depositDisclaimer}>
-              {isDepositing || isDepConfirming ? <CircularProgress size={20} /> : "2. Deposit"}
+            <Button variant="contained" onClick={() => depositTokens(pid, depositAmount, depositRewardType, depositNote)}
+              disabled={isDepositPending || !depositAmount || !depositDisclaimer}>
+              {isApproving ? <><CircularProgress size={20} sx={{ mr: 1 }} /> Approving...</>
+                : isDepositing ? <><CircularProgress size={20} sx={{ mr: 1 }} /> Depositing...</>
+                : "Deposit"}
             </Button>
           </Box>
-          {approveSuccess && <Alert severity="info" sx={{ mt: 2 }}>Approval confirmed. Now click Deposit.</Alert>}
           {depositSuccess && <Alert severity="success" sx={{ mt: 2 }}>Deposit successful!</Alert>}
           {depositError && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(depositError)}</Alert>}
         </TabPanel>

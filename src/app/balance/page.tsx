@@ -12,7 +12,7 @@ import { useSearchParams } from "next/navigation";
 import { zeroAddress } from "viem";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberTypeLabels } from "@/config/contracts";
 import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatContractError, fromBytes16 } from "@/lib/utils";
-import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useApproveToken, useAddTokens, useRewardTypes, useTransferLimit, useClaimMember } from "@/hooks/useRewardsProgram";
+import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useDepositTokens, useRewardTypes, useTransferLimit, useClaimMember } from "@/hooks/useRewardsProgram";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
 import { QRScannerButton } from "@/components/common/QRScannerButton";
@@ -153,8 +153,7 @@ function OwnerActions({ memberWallet }: { memberWallet: string }) {
   const [depositAmount, setDepositAmount] = useState("");
   const [depositRewardType, setDepositRewardType] = useState(0);
   const [depositNote, setDepositNote] = useState("");
-  const { approve, isPending: isApproving, isConfirming: isAppConf, isSuccess: approveSuccess } = useApproveToken();
-  const { addTokens, isPending: isDepositing, isConfirming: isDepConf, isSuccess: depositSuccess, error: depositError } = useAddTokens();
+  const { deposit: depositTokens, isApproving, isDepositing, isPending: isDepPending, isSuccess: depositSuccess, error: depositError } = useDepositTokens();
   const { data: rewardTypesData } = useRewardTypes();
 
   const [disclaimer, setDisclaimer] = useState(false);
@@ -188,16 +187,13 @@ function OwnerActions({ memberWallet }: { memberWallet: string }) {
             onChange={(e) => setDepositNote(e.target.value.slice(0, 128))}
             fullWidth size="small" sx={{ mt: 1 }} inputProps={{ maxLength: 128 }} />
           <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
-            <Button size="small" variant="outlined" onClick={() => approve(depositAmount)}
-              disabled={isApproving || isAppConf || !depositAmount || !disclaimer}>
-              {isApproving || isAppConf ? <CircularProgress size={16} /> : "Approve"}
-            </Button>
-            <Button size="small" variant="contained" onClick={() => addTokens(pid, depositAmount, depositRewardType, depositNote)}
-              disabled={isDepositing || isDepConf || !depositAmount || !disclaimer}>
-              {isDepositing || isDepConf ? <CircularProgress size={16} /> : "Deposit"}
+            <Button size="small" variant="contained" onClick={() => depositTokens(pid, depositAmount, depositRewardType, depositNote)}
+              disabled={isDepPending || !depositAmount || !disclaimer}>
+              {isApproving ? <><CircularProgress size={16} sx={{ mr: 0.5 }} /> Approving...</>
+                : isDepositing ? <><CircularProgress size={16} sx={{ mr: 0.5 }} /> Depositing...</>
+                : "Deposit"}
             </Button>
           </Box>
-          {approveSuccess && <Alert severity="info" sx={{ mt: 1 }}>Approved. Now click Deposit.</Alert>}
           {depositSuccess && <Alert severity="success" sx={{ mt: 1 }}>Deposited!</Alert>}
           {depositError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(depositError)}</Alert>}
         </Grid>
