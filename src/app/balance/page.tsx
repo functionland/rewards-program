@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import {
   Typography, Box, Paper, Grid, Chip, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, TextField, Button, Alert,
@@ -67,8 +67,8 @@ function MemberProgramRow({ memberID, programId }: { memberID: string; programId
 
 /* -- Claim Member Section -- */
 
-function ClaimMemberSection({ memberID, programCount, initialProgramId, initialEditCode }: {
-  memberID: string; programCount: number; initialProgramId?: string; initialEditCode?: string;
+function ClaimMemberSection({ memberID, programCount, initialProgramId, initialEditCode, onClaimed }: {
+  memberID: string; programCount: number; initialProgramId?: string; initialEditCode?: string; onClaimed?: (programId: number) => void;
 }) {
   const { address, isConnected } = useAccount();
   const { claimMember, isPending, isConfirming, isSuccess, error } = useClaimMember();
@@ -80,8 +80,9 @@ function ClaimMemberSection({ memberID, programCount, initialProgramId, initialE
     if (isSuccess) {
       setEditCode("");
       setDisclaimer(false);
+      onClaimed?.(parseInt(claimProgramId) || 1);
     }
-  }, [isSuccess]);
+  }, [isSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isConnected) {
     return (
@@ -132,11 +133,11 @@ function ClaimMemberSection({ memberID, programCount, initialProgramId, initialE
 
 /* -- Actions panel (only for wallet owner) -- */
 
-function OwnerActions({ memberWallet }: { memberWallet: string }) {
+function OwnerActions({ memberWallet, initialProgramId }: { memberWallet: string; initialProgramId?: number }) {
   const { address } = useAccount();
   const isOwner = address?.toLowerCase() === memberWallet.toLowerCase();
 
-  const [actionProgramId, setActionProgramId] = useState("1");
+  const [actionProgramId, setActionProgramId] = useState(String(initialProgramId || 1));
   const pid = parseInt(actionProgramId) || 0;
 
   // Transfer to Parent
@@ -271,10 +272,17 @@ function BalanceContent() {
     args: [memberIDBytes, i + 1] as const,
   }));
 
-  const { data: multicallResults } = useReadContracts({
+  const { data: multicallResults, refetch: refetchMulticall } = useReadContracts({
     contracts: contracts.length > 0 ? contracts : undefined,
     query: { enabled: !!searchID && count > 0 },
   });
+
+  // After claim, refetch so OwnerActions appears without manual refresh
+  const [claimedProgramId, setClaimedProgramId] = useState<number | null>(null);
+  const handleClaimed = useCallback((programId: number) => {
+    setClaimedProgramId(programId);
+    refetchMulticall();
+  }, [refetchMulticall]);
 
   // Find the first result that has a valid wallet
   let memberWallet = "";
@@ -348,7 +356,7 @@ function BalanceContent() {
             <>
               <Alert severity="info" sx={{ mb: 2 }}>Member &quot;{searchID}&quot; exists but has no linked wallet (walletless member).</Alert>
               <ClaimMemberSection memberID={searchID} programCount={count}
-                initialProgramId={claimParam} initialEditCode={codeParam} />
+                initialProgramId={claimParam} initialEditCode={codeParam} onClaimed={handleClaimed} />
             </>
           )}
 
@@ -384,7 +392,7 @@ function BalanceContent() {
                 </TableContainer>
               </Paper>
 
-              {memberWallet && <OwnerActions memberWallet={memberWallet} />}
+              {memberWallet && <OwnerActions memberWallet={memberWallet} initialProgramId={claimedProgramId ?? undefined} />}
             </>
           )}
         </>
