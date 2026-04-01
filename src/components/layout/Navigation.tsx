@@ -9,6 +9,7 @@ import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
 import { useUserRole } from "@/hooks/useUserRole";
 
 export const DRAWER_WIDTH = 240;
@@ -27,6 +28,8 @@ export function Navigation({ mobileOpen, onClose }: { mobileOpen: boolean; onClo
   const { isConnected } = useUserRole();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const drawerContent = (
     <>
@@ -45,7 +48,7 @@ export function Navigation({ mobileOpen, onClose }: { mobileOpen: boolean; onClo
               component={Link}
               href={item.href}
               selected={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))}
-              disabled={item.requiresAuth && !isConnected}
+              disabled={mounted && item.requiresAuth && !isConnected}
               onClick={isMobile ? onClose : undefined}
             >
               <ListItemIcon>{item.icon}</ListItemIcon>

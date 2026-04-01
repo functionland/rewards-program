@@ -5,7 +5,7 @@ import {
   Typography, Box, Paper, Grid, Chip, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, TextField, Button, Alert,
   CircularProgress, Select, MenuItem, FormControl, InputLabel,
-  useMediaQuery, useTheme,
+  useMediaQuery, useTheme, Tabs, Tab,
 } from "@mui/material";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { useSearchParams } from "next/navigation";
@@ -157,6 +157,7 @@ function OwnerActions({ memberWallet }: { memberWallet: string }) {
   const { data: rewardTypesData } = useRewardTypes();
 
   const [disclaimer, setDisclaimer] = useState(false);
+  const [actionTab, setActionTab] = useState(0);
 
   if (!isOwner) return null;
 
@@ -166,10 +167,15 @@ function OwnerActions({ memberWallet }: { memberWallet: string }) {
       <TextField label="Program ID" value={actionProgramId} onChange={(e) => setActionProgramId(e.target.value)}
         type="number" size="small" sx={{ width: 150, mb: 2 }} />
 
-      <Grid container spacing={3}>
-        {/* Deposit */}
-        <Grid item xs={12} md={4}>
-          <Typography variant="subtitle2" gutterBottom>Deposit FULA</Typography>
+      <Tabs value={actionTab} onChange={(_, v) => setActionTab(v)} sx={{ borderBottom: 1, borderColor: "divider" }}>
+        <Tab label="Deposit" />
+        <Tab label="Transfer to Parent" />
+        <Tab label="Withdraw" />
+      </Tabs>
+
+      {/* Deposit */}
+      {actionTab === 0 && (
+        <Box sx={{ pt: 2, maxWidth: 480 }}>
           <TextField label="Amount (FULA)" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)}
             fullWidth size="small" type="number" />
           <FormControl fullWidth size="small" sx={{ mt: 1 }}>
@@ -196,11 +202,12 @@ function OwnerActions({ memberWallet }: { memberWallet: string }) {
           </Box>
           {depositSuccess && <Alert severity="success" sx={{ mt: 1 }}>Deposited!</Alert>}
           {depositError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(depositError)}</Alert>}
-        </Grid>
+        </Box>
+      )}
 
-        {/* Transfer to Parent */}
-        <Grid item xs={12} md={4}>
-          <Typography variant="subtitle2" gutterBottom>Transfer to Parent</Typography>
+      {/* Transfer to Parent */}
+      {actionTab === 1 && (
+        <Box sx={{ pt: 2, maxWidth: 480 }}>
           {transferLimitData != null && Number(transferLimitData) > 0 && (
             <Alert severity="info" sx={{ mb: 1 }}>
               Transfer limit: <strong>{Number(transferLimitData)}%</strong> of total balance (Clients only).
@@ -217,11 +224,12 @@ function OwnerActions({ memberWallet }: { memberWallet: string }) {
           </Button>
           {transBackSuccess && <Alert severity="success" sx={{ mt: 1 }}>Transferred!</Alert>}
           {transBackError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(transBackError)}</Alert>}
-        </Grid>
+        </Box>
+      )}
 
-        {/* Withdraw */}
-        <Grid item xs={12} md={4}>
-          <Typography variant="subtitle2" gutterBottom>Withdraw</Typography>
+      {/* Withdraw */}
+      {actionTab === 2 && (
+        <Box sx={{ pt: 2, maxWidth: 480 }}>
           <TextField label="Amount (FULA)" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)}
             fullWidth size="small" type="number" />
           <Button size="small" variant="contained" color="secondary" sx={{ mt: 1 }}
@@ -231,8 +239,8 @@ function OwnerActions({ memberWallet }: { memberWallet: string }) {
           </Button>
           {withdrawSuccess && <Alert severity="success" sx={{ mt: 1 }}>Withdrawn!</Alert>}
           {withdrawError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(withdrawError)}</Alert>}
-        </Grid>
-      </Grid>
+        </Box>
+      )}
 
       <OnChainDisclaimer accepted={disclaimer} onChange={setDisclaimer} />
     </Paper>

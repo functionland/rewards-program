@@ -37,7 +37,9 @@
       "Bash(find /mnt/e/GitHub/fula-chain -name *.ts -o -name *.js)",
       "Bash(find /mnt/e/GitHub/fula-chain -type f \\\\\\(-name *.test.ts -o -name *.spec.ts -o -name *test*.ts \\\\\\))",
       "Bash(npm ls:*)",
-      "Bash(npm view:*)"
+      "Bash(npm view:*)",
+      "Bash(ls /mnt/e/GitHub/rewards-program/src/app/global-error*)",
+      "Bash(ls /mnt/e/GitHub/rewards-program/src/app/error*)"
     ]
   }
 }

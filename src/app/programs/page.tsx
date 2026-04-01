@@ -240,7 +240,7 @@ function ProgramDetail({ programId }: { programId: number }) {
   const { data: transferLimit } = useTransferLimit(programId);
 
   const isPA = role === MemberRoleEnum.ProgramAdmin;
-  const canManageProgram = isAdmin;
+  const canManageProgram = isAdmin || isPA;
   const canManageSubTypes = isAdmin || isPA;
   const canSetTransferLimit = isAdmin || isPA;
   const canAddMembers = isAdmin || isPA || role === MemberRoleEnum.TeamLeader;
@@ -601,7 +601,7 @@ function ProgramDetail({ programId }: { programId: number }) {
       {(isAdmin || canManageSubTypes) && program.active && (
         <Paper sx={{ p: 2, mb: 3 }}>
           <Typography variant="h6" gutterBottom>Reward Configuration</Typography>
-          <RewardTypesSection isAdmin={isAdmin} />
+          <RewardTypesSection isAdmin={isAdmin || isPA} />
           <SubTypesSection programId={programId} canManage={canManageSubTypes} />
         </Paper>
       )}
