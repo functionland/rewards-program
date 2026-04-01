@@ -35,7 +35,9 @@
       "Bash(find /mnt/e/GitHub/fula-chain -name *.sol -path */test* -o -name *Test* -o -name *test*)",
       "Bash(find /mnt/e/GitHub -name *.test.ts -o -name *.spec.ts)",
       "Bash(find /mnt/e/GitHub/fula-chain -name *.ts -o -name *.js)",
-      "Bash(find /mnt/e/GitHub/fula-chain -type f \\\\\\(-name *.test.ts -o -name *.spec.ts -o -name *test*.ts \\\\\\))"
+      "Bash(find /mnt/e/GitHub/fula-chain -type f \\\\\\(-name *.test.ts -o -name *.spec.ts -o -name *test*.ts \\\\\\))",
+      "Bash(npm ls:*)",
+      "Bash(npm view:*)"
     ]
   }
 }

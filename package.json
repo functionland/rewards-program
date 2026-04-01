@@ -24,7 +24,7 @@
     "wagmi": "^2.14.0"
   },
   "overrides": {
-    "use-sync-external-store": "^1.4.0"
+    "use-sync-external-store": ">=1.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
