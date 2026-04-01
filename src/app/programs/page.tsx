@@ -7,6 +7,7 @@ import {
   DialogContent, DialogActions, Alert, CircularProgress,
   Select, MenuItem, FormControl, InputLabel, IconButton, Tooltip,
   Accordion, AccordionSummary, AccordionDetails, useMediaQuery, useTheme,
+  Tabs, Tab,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import EditIcon from "@mui/icons-material/Edit";
@@ -304,6 +305,8 @@ function ProgramDetail({ programId }: { programId: number }) {
   const [parentDisclaimer, setParentDisclaimer] = useState(false);
   const [withAmount, setWithAmount] = useState("");
   const [withDisclaimer, setWithDisclaimer] = useState(false);
+  const [tokenTab, setTokenTab] = useState(0);
+  const canTransferSub = isAdmin || isPA || role === MemberRoleEnum.TeamLeader;
   const isMember = role > 0 || isAdmin;
 
   const paWalletValid = !paWallet || isValidAddress(paWallet);
@@ -487,23 +490,31 @@ function ProgramDetail({ programId }: { programId: number }) {
       {/* Token Actions */}
       {isMember && program.active && (
         <Paper sx={{ p: 2, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>Token Actions</Typography>
-          {walletBalance != null && (
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Wallet Balance: {formatFula(walletBalance)} FULA
-            </Typography>
-          )}
-          <Grid container spacing={3}>
-            {/* Deposit */}
-            <Grid item xs={12} sm={6} md={3}>
-              <Typography variant="subtitle2" gutterBottom>Deposit</Typography>
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+            <Typography variant="h6">Token Actions</Typography>
+            {walletBalance != null && (
+              <Typography variant="body2" color="text.secondary">
+                Wallet: {formatFula(walletBalance)} FULA
+              </Typography>
+            )}
+          </Box>
+          <Tabs value={tokenTab} onChange={(_, v) => setTokenTab(v)} variant="scrollable" scrollButtons="auto">
+            <Tab label="Deposit" />
+            {canTransferSub && <Tab label="Transfer to Sub-Member" />}
+            <Tab label="Transfer to Parent" />
+            <Tab label="Withdraw" />
+          </Tabs>
+
+          {/* Deposit */}
+          {tokenTab === 0 && (
+            <Box sx={{ pt: 2, maxWidth: 480 }}>
               <TextField label="Amount (FULA)" value={depAmount} onChange={(e) => setDepAmount(e.target.value)}
                 fullWidth size="small" type="number" />
               <TextField label="Note (max 128)" value={depNote}
                 onChange={(e) => setDepNote(e.target.value.slice(0, 128))}
                 fullWidth size="small" sx={{ mt: 1 }} inputProps={{ maxLength: 128 }} />
               <OnChainDisclaimer accepted={depDisclaimer} onChange={setDepDisclaimer} />
-              <Button size="small" variant="contained" fullWidth sx={{ mt: 1 }}
+              <Button variant="contained" fullWidth sx={{ mt: 1 }}
                 onClick={() => depositTokens(programId, depAmount, 0, depNote)}
                 disabled={isDepPending || !depAmount || !depDisclaimer}>
                 {isDepApproving ? <><CircularProgress size={16} sx={{ mr: 0.5 }} /> Approving...</>
@@ -512,43 +523,43 @@ function ProgramDetail({ programId }: { programId: number }) {
               </Button>
               {depSuccess && <Alert severity="success" sx={{ mt: 1 }}>Deposited!</Alert>}
               {depError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(depError)}</Alert>}
-            </Grid>
+            </Box>
+          )}
 
-            {/* Transfer to Sub-Member */}
-            {(isAdmin || isPA || role === MemberRoleEnum.TeamLeader) && (
-              <Grid item xs={12} sm={6} md={3}>
-                <Typography variant="subtitle2" gutterBottom>Transfer to Sub-Member</Typography>
-                <TextField label="Recipient Wallet" value={transTo} onChange={(e) => setTransTo(e.target.value)}
-                  fullWidth size="small" error={!!transTo && !isValidAddress(transTo)} />
-                <TextField label="Amount (FULA)" value={transAmount} onChange={(e) => setTransAmount(e.target.value)}
+          {/* Transfer to Sub-Member */}
+          {canTransferSub && tokenTab === 1 && (
+            <Box sx={{ pt: 2, maxWidth: 480 }}>
+              <TextField label="Recipient Wallet" value={transTo} onChange={(e) => setTransTo(e.target.value)}
+                fullWidth size="small" error={!!transTo && !isValidAddress(transTo)} />
+              <TextField label="Amount (FULA)" value={transAmount} onChange={(e) => setTransAmount(e.target.value)}
+                fullWidth size="small" type="number" sx={{ mt: 1 }} />
+              <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+                <InputLabel>Lock</InputLabel>
+                <Select value={transLocked ? "locked" : "unlocked"}
+                  onChange={(e) => setTransLocked(e.target.value === "locked")} label="Lock">
+                  <MenuItem value="locked">Permanently Locked</MenuItem>
+                  <MenuItem value="unlocked">Unlocked / Time-locked</MenuItem>
+                </Select>
+              </FormControl>
+              {!transLocked && (
+                <TextField label="Lock Days (0 = unlocked)" value={transLockDays}
+                  onChange={(e) => setTransLockDays(e.target.value)}
                   fullWidth size="small" type="number" sx={{ mt: 1 }} />
-                <FormControl fullWidth size="small" sx={{ mt: 1 }}>
-                  <InputLabel>Lock</InputLabel>
-                  <Select value={transLocked ? "locked" : "unlocked"}
-                    onChange={(e) => setTransLocked(e.target.value === "locked")} label="Lock">
-                    <MenuItem value="locked">Permanently Locked</MenuItem>
-                    <MenuItem value="unlocked">Unlocked / Time-locked</MenuItem>
-                  </Select>
-                </FormControl>
-                {!transLocked && (
-                  <TextField label="Lock Days (0 = unlocked)" value={transLockDays}
-                    onChange={(e) => setTransLockDays(e.target.value)}
-                    fullWidth size="small" type="number" sx={{ mt: 1 }} />
-                )}
-                <OnChainDisclaimer accepted={transDisclaimer} onChange={setTransDisclaimer} />
-                <Button size="small" variant="contained" fullWidth sx={{ mt: 1 }}
-                  onClick={() => transfer(programId, transTo as `0x${string}`, transAmount, transLocked, parseInt(transLockDays) || 0)}
-                  disabled={isTransPending || isTransConf || !transTo || !transAmount || !isValidAddress(transTo) || !transDisclaimer}>
-                  {isTransPending || isTransConf ? <CircularProgress size={16} /> : "Transfer"}
-                </Button>
-                {transSuccess && <Alert severity="success" sx={{ mt: 1 }}>Transferred!</Alert>}
-                {transError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(transError)}</Alert>}
-              </Grid>
-            )}
+              )}
+              <OnChainDisclaimer accepted={transDisclaimer} onChange={setTransDisclaimer} />
+              <Button variant="contained" fullWidth sx={{ mt: 1 }}
+                onClick={() => transfer(programId, transTo as `0x${string}`, transAmount, transLocked, parseInt(transLockDays) || 0)}
+                disabled={isTransPending || isTransConf || !transTo || !transAmount || !isValidAddress(transTo) || !transDisclaimer}>
+                {isTransPending || isTransConf ? <CircularProgress size={16} /> : "Transfer"}
+              </Button>
+              {transSuccess && <Alert severity="success" sx={{ mt: 1 }}>Transferred!</Alert>}
+              {transError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(transError)}</Alert>}
+            </Box>
+          )}
 
-            {/* Transfer to Parent */}
-            <Grid item xs={12} sm={6} md={3}>
-              <Typography variant="subtitle2" gutterBottom>Transfer to Parent</Typography>
+          {/* Transfer to Parent */}
+          {tokenTab === (canTransferSub ? 2 : 1) && (
+            <Box sx={{ pt: 2, maxWidth: 480 }}>
               {transferLimit != null && Number(transferLimit) > 0 && (
                 <Alert severity="info" sx={{ mb: 1 }}>Limit: {String(transferLimit)}% of total balance</Alert>
               )}
@@ -558,30 +569,31 @@ function ProgramDetail({ programId }: { programId: number }) {
               <TextField label="Amount (FULA)" value={parentAmount} onChange={(e) => setParentAmount(e.target.value)}
                 fullWidth size="small" type="number" sx={{ mt: 1 }} />
               <OnChainDisclaimer accepted={parentDisclaimer} onChange={setParentDisclaimer} />
-              <Button size="small" variant="contained" fullWidth sx={{ mt: 1 }}
+              <Button variant="contained" fullWidth sx={{ mt: 1 }}
                 onClick={() => transferBack(programId, (parentTo || "0x0000000000000000000000000000000000000000") as `0x${string}`, parentAmount)}
                 disabled={isTransBackPending || isTransBackConf || !parentAmount || !parentDisclaimer}>
                 {isTransBackPending || isTransBackConf ? <CircularProgress size={16} /> : "Transfer to Parent"}
               </Button>
               {transBackSuccess && <Alert severity="success" sx={{ mt: 1 }}>Transferred!</Alert>}
               {transBackError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(transBackError)}</Alert>}
-            </Grid>
+            </Box>
+          )}
 
-            {/* Withdraw */}
-            <Grid item xs={12} sm={6} md={3}>
-              <Typography variant="subtitle2" gutterBottom>Withdraw</Typography>
+          {/* Withdraw */}
+          {tokenTab === (canTransferSub ? 3 : 2) && (
+            <Box sx={{ pt: 2, maxWidth: 480 }}>
               <TextField label="Amount (FULA)" value={withAmount} onChange={(e) => setWithAmount(e.target.value)}
                 fullWidth size="small" type="number" />
               <OnChainDisclaimer accepted={withDisclaimer} onChange={setWithDisclaimer} />
-              <Button size="small" variant="contained" fullWidth sx={{ mt: 1 }}
+              <Button variant="contained" fullWidth sx={{ mt: 1 }}
                 onClick={() => withdraw(programId, withAmount)}
                 disabled={isWithPending || isWithConf || !withAmount || !withDisclaimer}>
                 {isWithPending || isWithConf ? <CircularProgress size={16} /> : "Withdraw"}
               </Button>
               {withSuccess && <Alert severity="success" sx={{ mt: 1 }}>Withdrawn!</Alert>}
               {withError && <Alert severity="error" sx={{ mt: 1 }}>{formatContractError(withError)}</Alert>}
-            </Grid>
-          </Grid>
+            </Box>
+          )}
         </Paper>
       )}
 
