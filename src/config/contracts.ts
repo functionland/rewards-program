@@ -291,6 +291,16 @@ export const REWARDS_PROGRAM_ABI = [
     outputs: [],
   },
   {
+    name: "commitClaim",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "programId", type: "uint32" },
+      { name: "commitHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
     name: "claimMember",
     type: "function",
     stateMutability: "nonpayable",

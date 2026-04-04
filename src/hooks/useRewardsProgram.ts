@@ -5,6 +5,7 @@ import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 
 import { useAccount } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { readContract, writeContract as writeContractAction, waitForTransactionReceipt } from "wagmi/actions";
+import { keccak256, encodePacked } from "viem";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, ERC20_ABI } from "@/config/contracts";
 import { toBytes8, toBytes12, toBytes16, safeParseAmount } from "@/lib/utils";
 import { wagmiConfig } from "@/lib/wagmi";
@@ -266,17 +267,57 @@ export function useWithdraw() {
 }
 
 export function useClaimMember() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { address } = useAccount();
+  const [isPending, setIsPending] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [hash, setHash] = useState<`0x${string}` | undefined>();
   useRefetchOnSuccess(isSuccess);
 
-  const claimMember = (programId: number, memberID: string, editCode: `0x${string}`) => {
-    writeContract({
-      address: CONTRACTS.rewardsProgram,
-      abi: REWARDS_PROGRAM_ABI,
-      functionName: "claimMember",
-      args: [programId, toBytes12(memberID), editCode],
-    });
+  const claimMember = async (programId: number, memberID: string, editCode: `0x${string}`) => {
+    if (!address) return;
+    setIsPending(true);
+    setIsConfirming(false);
+    setIsSuccess(false);
+    setError(null);
+    setHash(undefined);
+
+    try {
+      const memberIDBytes = toBytes12(memberID);
+      const commitHash = keccak256(
+        encodePacked(["bytes12", "bytes32", "address"], [memberIDBytes as `0x${string}`, editCode, address])
+      );
+
+      // Step 1: commitClaim
+      const commitTx = await writeContractAction(wagmiConfig, {
+        address: CONTRACTS.rewardsProgram,
+        abi: REWARDS_PROGRAM_ABI,
+        functionName: "commitClaim",
+        args: [programId, commitHash],
+      });
+      await waitForTransactionReceipt(wagmiConfig, { hash: commitTx });
+
+      // Wait for MIN_COMMIT_DELAY (5 seconds) + buffer
+      setIsConfirming(true);
+      await new Promise((r) => setTimeout(r, 8000));
+
+      // Step 2: claimMember
+      const claimTx = await writeContractAction(wagmiConfig, {
+        address: CONTRACTS.rewardsProgram,
+        abi: REWARDS_PROGRAM_ABI,
+        functionName: "claimMember",
+        args: [programId, memberIDBytes, editCode],
+      });
+      setHash(claimTx);
+      await waitForTransactionReceipt(wagmiConfig, { hash: claimTx });
+      setIsSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      setIsPending(false);
+      setIsConfirming(false);
+    }
   };
 
   return { claimMember, isPending, isConfirming, isSuccess, error, hash };
