@@ -143,8 +143,17 @@ function OwnerActions({ memberWallet, initialProgramId }: { memberWallet: string
   // Transfer to Parent
   const [parentTo, setParentTo] = useState("");
   const [parentAmount, setParentAmount] = useState("");
+  const [parentNote, setParentNote] = useState("");
   const { transferBack, isPending: isTransBack, isConfirming: isTransBackConf, isSuccess: transBackSuccess, error: transBackError } = useTransferToParent();
   const { data: transferLimitData } = useTransferLimit(pid);
+  const { data: myMember } = useReadContract({
+    address: CONTRACTS.rewardsProgram,
+    abi: REWARDS_PROGRAM_ABI,
+    functionName: "getMember",
+    args: address ? [pid, address] : undefined,
+    query: { enabled: !!address && pid > 0 },
+  });
+  const parentAddr = myMember?.parent && myMember.parent !== zeroAddress ? myMember.parent as string : "";
 
   // Withdraw
   const [withdrawAmount, setWithdrawAmount] = useState("");
@@ -209,17 +218,27 @@ function OwnerActions({ memberWallet, initialProgramId }: { memberWallet: string
       {/* Transfer to Parent */}
       {actionTab === 1 && (
         <Box sx={{ pt: 2, maxWidth: 480 }}>
+          {parentAddr && (
+            <Alert severity="info" sx={{ mb: 1 }}>
+              Your parent in this program: <strong>{shortenAddress(parentAddr)}</strong>. Leave wallet empty to transfer directly to them.
+            </Alert>
+          )}
           {transferLimitData != null && Number(transferLimitData) > 0 && (
             <Alert severity="info" sx={{ mb: 1 }}>
               Transfer limit: <strong>{Number(transferLimitData)}%</strong> of total balance (Clients only).
             </Alert>
           )}
-          <TextField label="Parent Wallet (optional)" value={parentTo} onChange={(e) => setParentTo(e.target.value)}
-            fullWidth size="small" placeholder="0x... (empty = direct parent)" />
+          <TextField label="Override Parent Wallet (optional)" value={parentTo} onChange={(e) => setParentTo(e.target.value)}
+            fullWidth size="small" placeholder="0x..."
+            helperText="Leave empty to transfer to your direct parent" />
           <TextField label="Amount (FULA)" value={parentAmount} onChange={(e) => setParentAmount(e.target.value)}
             fullWidth size="small" type="number" sx={{ mt: 1 }} />
+          <TextField label="Note (optional, max 128)" value={parentNote}
+            onChange={(e) => setParentNote(e.target.value.slice(0, 128))}
+            fullWidth size="small" sx={{ mt: 1 }} inputProps={{ maxLength: 128 }}
+            helperText={`${parentNote.length}/128`} />
           <Button size="small" variant="contained" sx={{ mt: 1 }}
-            onClick={() => transferBack(pid, (parentTo || zeroAddress) as `0x${string}`, parentAmount)}
+            onClick={() => transferBack(pid, (parentTo || zeroAddress) as `0x${string}`, parentAmount, parentNote)}
             disabled={isTransBack || isTransBackConf || !parentAmount || !disclaimer}>
             {isTransBack || isTransBackConf ? <CircularProgress size={16} /> : "Transfer"}
           </Button>
@@ -328,7 +347,7 @@ function BalanceContent() {
           <TextField
             label="Member ID (Reward ID)"
             value={memberID}
-            onChange={(e) => setMemberID(e.target.value)}
+            onChange={(e) => setMemberID(e.target.value.toUpperCase())}
             sx={{ flexGrow: 1, minWidth: 150 }}
             inputProps={{ maxLength: 12 }}
             placeholder="Enter member ID..."

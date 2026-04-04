@@ -35,10 +35,10 @@ const EVENT_DEPOSITS = parseAbiItem(
   "event TokensDeposited(uint256 indexed depositId, uint32 indexed programId, address indexed wallet, uint256 amount, uint8 rewardType, string note)"
 );
 const EVENT_TRANSFERS = parseAbiItem(
-  "event TokensTransferredToMember(uint32 indexed programId, address indexed from, address indexed to, uint256 amount, bool locked, uint32 lockTimeDays)"
+  "event TokensTransferredToMember(uint32 indexed programId, address indexed from, address indexed to, uint256 amount, bool locked, uint32 lockTimeDays, string note)"
 );
 const EVENT_PARENT_TRANSFERS = parseAbiItem(
-  "event TokensTransferredToParent(uint32 indexed programId, address indexed from, address indexed to, uint256 amount)"
+  "event TokensTransferredToParent(uint32 indexed programId, address indexed from, address indexed to, uint256 amount, string note)"
 );
 const EVENT_WITHDRAWALS = parseAbiItem(
   "event TokensWithdrawn(uint32 indexed programId, address indexed wallet, uint256 amount)"
@@ -205,6 +205,7 @@ export function useChunkedEventLogs(options: {
                     programId: Number(log.args.programId),
                     wallet: log.args.from || "",
                     amount: log.args.amount || BigInt(0),
+                    note: log.args.note,
                     blockNumber: log.blockNumber,
                     txHash: log.transactionHash,
                   });
@@ -217,6 +218,7 @@ export function useChunkedEventLogs(options: {
                     programId: Number(log.args.programId),
                     wallet: log.args.from || "",
                     amount: log.args.amount || BigInt(0),
+                    note: log.args.note,
                     blockNumber: log.blockNumber,
                     txHash: log.transactionHash,
                   });

@@ -158,7 +158,7 @@ export default function MembersPage() {
           <TextField
             label={searchType === "memberID" ? "Member ID (= Reward ID)" : "Program Code"}
             value={searchValue}
-            onChange={(e) => { setSearchValue(searchType === "programCode" ? e.target.value.toUpperCase() : e.target.value); setSearchTriggered(false); }}
+            onChange={(e) => { setSearchValue(e.target.value.toUpperCase()); setSearchTriggered(false); }}
             sx={{ flexGrow: 1, minWidth: 150 }}
             inputProps={{ maxLength: searchType === "memberID" ? 12 : 8 }}
           />
@@ -387,7 +387,7 @@ export default function MembersPage() {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Current Member ID: <strong>{memberIdStr}</strong> (Program {memberProgramId})
           </Typography>
-          <TextField label="New Member ID" value={newMemberID} onChange={(e) => setNewMemberID(e.target.value)}
+          <TextField label="New Member ID" value={newMemberID} onChange={(e) => setNewMemberID(e.target.value.toUpperCase())}
             fullWidth margin="normal" inputProps={{ maxLength: 12 }} />
           {errUpdateID && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(errUpdateID)}</Alert>}
           {successUpdateID && <Alert severity="success" sx={{ mt: 2 }}>Member ID updated!</Alert>}

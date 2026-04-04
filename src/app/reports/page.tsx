@@ -9,10 +9,11 @@ import {
   InputAdornment,
 } from "@mui/material";
 import { parseUnits } from "viem";
-import { CONTRACTS } from "@/config/contracts";
+import { useReadContract } from "wagmi";
+import { CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
 import { useRewardTypes } from "@/hooks/useRewardsProgram";
 import { useChunkedEventLogs, type TimeRange } from "@/hooks/useChunkedEventLogs";
-import { formatFula, shortenAddress, fromBytes16 } from "@/lib/utils";
+import { formatFula, shortenAddress, fromBytes16, toBytes12 } from "@/lib/utils";
 
 export default function ReportsPage() {
   const theme = useTheme();
@@ -29,8 +30,20 @@ export default function ReportsPage() {
   const [filterEventType, setFilterEventType] = useState<string>("");
   const [filterRewardType, setFilterRewardType] = useState<number | "">("");
   const [filterWallet, setFilterWallet] = useState("");
+  const [filterMemberID, setFilterMemberID] = useState("");
   const [filterAmountMin, setFilterAmountMin] = useState("");
   const [filterAmountMax, setFilterAmountMax] = useState("");
+
+  // Resolve member ID → storage key for filtering
+  const filterMemberIDBytes = filterMemberID.length > 0 ? toBytes12(filterMemberID) : undefined;
+  const { data: filterMemberKey } = useReadContract({
+    address: CONTRACTS.rewardsProgram,
+    abi: REWARDS_PROGRAM_ABI,
+    functionName: "memberIDLookup",
+    args: filterMemberIDBytes && filterProgramId ? [filterMemberIDBytes, Number(filterProgramId)] : undefined,
+    query: { enabled: !!filterMemberIDBytes && !!filterProgramId },
+  });
+  const resolvedMemberAddr = filterMemberKey && filterMemberKey !== "0x0000000000000000000000000000000000000000" ? (filterMemberKey as string).toLowerCase() : "";
 
   const {
     events, loading, progress, totalChunks, completedChunks, error, cancel,
@@ -52,6 +65,9 @@ export default function ReportsPage() {
   if (filterWallet) {
     const w = filterWallet.toLowerCase();
     filteredEvents = filteredEvents.filter(e => e.wallet.toLowerCase().includes(w));
+  }
+  if (resolvedMemberAddr) {
+    filteredEvents = filteredEvents.filter(e => e.wallet.toLowerCase() === resolvedMemberAddr);
   }
   if (filterAmountMin) {
     try {
@@ -158,10 +174,17 @@ export default function ReportsPage() {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={12} sm={2}>
               <TextField label="Wallet Address" value={filterWallet}
                 onChange={(e) => { setFilterWallet(e.target.value); setPage(0); }}
                 fullWidth size="small" placeholder="0x..." />
+            </Grid>
+            <Grid item xs={12} sm={2}>
+              <TextField label="Member ID" value={filterMemberID}
+                onChange={(e) => { setFilterMemberID(e.target.value.toUpperCase().slice(0, 12)); setPage(0); }}
+                fullWidth size="small" placeholder="e.g. ALICE01"
+                inputProps={{ maxLength: 12 }}
+                helperText={!filterProgramId ? "Set Program ID" : filterMemberID && !resolvedMemberAddr ? "Not found" : ""} />
             </Grid>
             <Grid item xs={6} sm={2}>
               <TextField label="Min Amount" value={filterAmountMin}

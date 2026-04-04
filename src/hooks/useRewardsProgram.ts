@@ -211,7 +211,8 @@ export function useTransferToSubMember() {
     to: `0x${string}`,
     amount: string,
     locked: boolean,
-    lockTimeDays: number
+    lockTimeDays: number,
+    note: string = ""
   ) => {
     const parsed = safeParseAmount(amount);
     if (!parsed) return;
@@ -219,7 +220,7 @@ export function useTransferToSubMember() {
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "transferToSubMember",
-      args: [programId, to, parsed, locked, lockTimeDays],
+      args: [programId, to, parsed, locked, lockTimeDays, note],
     });
   };
 
@@ -231,14 +232,14 @@ export function useTransferToParent() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   useRefetchOnSuccess(isSuccess);
 
-  const transferBack = (programId: number, to: `0x${string}`, amount: string) => {
+  const transferBack = (programId: number, to: `0x${string}`, amount: string, note: string = "") => {
     const parsed = safeParseAmount(amount);
     if (!parsed) return;
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "transferToParent",
-      args: [programId, to, parsed],
+      args: [programId, to, parsed, note],
     });
   };
 

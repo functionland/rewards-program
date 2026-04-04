@@ -15,7 +15,8 @@ import BlockIcon from "@mui/icons-material/Block";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import { useAccount } from "wagmi";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import { useAccount, useReadContract } from "wagmi";
 import { useSearchParams } from "next/navigation";
 import { keccak256 } from "viem";
 import Link from "next/link";
@@ -30,8 +31,8 @@ import {
   useDepositTokens, useTransferToSubMember, useTransferToParent, useWithdraw,
   useTokenBalance,
 } from "@/hooks/useRewardsProgram";
-import { MemberRoleLabels, MemberRoleEnum, MemberTypeLabels } from "@/config/contracts";
-import { fromBytes8, fromBytes12, fromBytes16, shortenAddress, formatFula, isValidAddress, formatContractError } from "@/lib/utils";
+import { MemberRoleLabels, MemberRoleEnum, MemberTypeLabels, CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
+import { fromBytes8, fromBytes12, fromBytes16, toBytes12, shortenAddress, formatFula, isValidAddress, formatContractError } from "@/lib/utils";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
 
@@ -239,6 +240,16 @@ function ProgramDetail({ programId }: { programId: number }) {
   const { data: myBalance } = useMemberBalance(programId, address);
   const { data: transferLimit } = useTransferLimit(programId);
 
+  // My member info (for parent detection)
+  const { data: myMember } = useReadContract({
+    address: CONTRACTS.rewardsProgram,
+    abi: REWARDS_PROGRAM_ABI,
+    functionName: "getMember",
+    args: address ? [programId, address] : undefined,
+    query: { enabled: !!address && programId > 0 },
+  });
+  const parentAddr = myMember?.parent && myMember.parent !== "0x0000000000000000000000000000000000000000" ? myMember.parent as string : "";
+
   const isPA = role === MemberRoleEnum.ProgramAdmin;
   const canManageProgram = isAdmin || isPA;
   const canManageSubTypes = isAdmin || isPA;
@@ -295,19 +306,41 @@ function ProgramDetail({ programId }: { programId: number }) {
   const [depAmount, setDepAmount] = useState("");
   const [depNote, setDepNote] = useState("");
   const [depDisclaimer, setDepDisclaimer] = useState(false);
+  const [transMemberCode, setTransMemberCode] = useState("");
   const [transTo, setTransTo] = useState("");
   const [transAmount, setTransAmount] = useState("");
   const [transLocked, setTransLocked] = useState(true);
   const [transLockDays, setTransLockDays] = useState("0");
+  const [transNote, setTransNote] = useState("");
   const [transDisclaimer, setTransDisclaimer] = useState(false);
   const [parentTo, setParentTo] = useState("");
   const [parentAmount, setParentAmount] = useState("");
+  const [parentNote, setParentNote] = useState("");
   const [parentDisclaimer, setParentDisclaimer] = useState(false);
   const [withAmount, setWithAmount] = useState("");
   const [withDisclaimer, setWithDisclaimer] = useState(false);
   const [tokenTab, setTokenTab] = useState(0);
   const canTransferSub = isAdmin || isPA || role === MemberRoleEnum.TeamLeader;
   const isMember = role > 0 || isAdmin;
+
+  // Resolve member code → storage key for transfers
+  const transMemberCodeBytes = transMemberCode.length > 0 ? toBytes12(transMemberCode) : undefined;
+  const { data: transResolvedKey } = useReadContract({
+    address: CONTRACTS.rewardsProgram,
+    abi: REWARDS_PROGRAM_ABI,
+    functionName: "memberIDLookup",
+    args: transMemberCodeBytes ? [transMemberCodeBytes, programId] : undefined,
+    query: { enabled: !!transMemberCodeBytes && programId > 0 },
+  });
+  const { data: transResolvedMember } = useReadContract({
+    address: CONTRACTS.rewardsProgram,
+    abi: REWARDS_PROGRAM_ABI,
+    functionName: "getMemberByID",
+    args: transMemberCodeBytes ? [transMemberCodeBytes, programId] : undefined,
+    query: { enabled: !!transMemberCodeBytes && programId > 0 },
+  });
+  const transResolvedAddr = transResolvedKey && transResolvedKey !== "0x0000000000000000000000000000000000000000" ? transResolvedKey as string : "";
+  const transTarget = transResolvedAddr || transTo;
 
   const paWalletValid = !paWallet || isValidAddress(paWallet);
   const mWalletValid = !mWallet || isValidAddress(mWallet);
@@ -529,27 +562,57 @@ function ProgramDetail({ programId }: { programId: number }) {
           {/* Transfer to Sub-Member */}
           {canTransferSub && tokenTab === 1 && (
             <Box sx={{ pt: 2, maxWidth: 480 }}>
-              <TextField label="Recipient Wallet" value={transTo} onChange={(e) => setTransTo(e.target.value)}
-                fullWidth size="small" error={!!transTo && !isValidAddress(transTo)} />
+              <TextField label="Recipient Member Code" value={transMemberCode}
+                onChange={(e) => setTransMemberCode(e.target.value.toUpperCase().slice(0, 12))}
+                fullWidth size="small" placeholder="e.g. ALICE01"
+                inputProps={{ maxLength: 12 }} />
+              {transMemberCode && transResolvedAddr && transResolvedMember && (
+                <Alert severity="success" sx={{ mt: 1 }}>
+                  Resolved: <strong>{fromBytes12(transResolvedMember.memberID)}</strong> — {MemberRoleLabels[transResolvedMember.role] || "Unknown"}
+                  {transResolvedMember.wallet && transResolvedMember.wallet !== "0x0000000000000000000000000000000000000000"
+                    ? ` (${shortenAddress(transResolvedMember.wallet)})`
+                    : " (walletless member)"}
+                </Alert>
+              )}
+              {transMemberCode && !transResolvedAddr && transMemberCodeBytes && (
+                <Alert severity="warning" sx={{ mt: 1 }}>Member not found in this program.</Alert>
+              )}
+              <TextField label="Override Wallet (optional)" value={transTo} onChange={(e) => setTransTo(e.target.value)}
+                fullWidth size="small" sx={{ mt: 1 }} placeholder="0x... (only if member code is empty)"
+                error={!!transTo && !isValidAddress(transTo)}
+                helperText="Used only when member code is empty"
+                disabled={!!transResolvedAddr} />
               <TextField label="Amount (FULA)" value={transAmount} onChange={(e) => setTransAmount(e.target.value)}
                 fullWidth size="small" type="number" sx={{ mt: 1 }} />
-              <FormControl fullWidth size="small" sx={{ mt: 1 }}>
-                <InputLabel>Lock</InputLabel>
-                <Select value={transLocked ? "locked" : "unlocked"}
-                  onChange={(e) => setTransLocked(e.target.value === "locked")} label="Lock">
-                  <MenuItem value="locked">Permanently Locked</MenuItem>
-                  <MenuItem value="unlocked">Unlocked / Time-locked</MenuItem>
-                </Select>
-              </FormControl>
-              {!transLocked && (
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mt: 1 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Lock</InputLabel>
+                  <Select value={transLocked ? "locked" : "unlocked"}
+                    onChange={(e) => { setTransLocked(e.target.value === "locked"); if (e.target.value === "locked") setTransLockDays("0"); }} label="Lock">
+                    <MenuItem value="locked">Permanently Locked</MenuItem>
+                    <MenuItem value="unlocked">Unlocked / Time-locked</MenuItem>
+                  </Select>
+                </FormControl>
+                <Tooltip title="If you check Permanently Locked, the recipient can only transfer the tokens back to sender and cannot withdraw to their wallet" arrow>
+                  <InfoOutlinedIcon sx={{ fontSize: 16, color: "text.secondary", cursor: "help" }} />
+                </Tooltip>
+              </Box>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mt: 1 }}>
                 <TextField label="Lock Days (0 = unlocked)" value={transLockDays}
                   onChange={(e) => setTransLockDays(e.target.value)}
-                  fullWidth size="small" type="number" sx={{ mt: 1 }} />
-              )}
+                  fullWidth size="small" type="number" disabled={transLocked} />
+                <Tooltip title="If you set a time, the user needs to wait for that number of days before they can withdraw tokens to their wallet. They can still transfer tokens back to sender at any time without waiting" arrow>
+                  <InfoOutlinedIcon sx={{ fontSize: 16, color: "text.secondary", cursor: "help" }} />
+                </Tooltip>
+              </Box>
+              <TextField label="Note (optional, max 128)" value={transNote}
+                onChange={(e) => setTransNote(e.target.value.slice(0, 128))}
+                fullWidth size="small" sx={{ mt: 1 }} inputProps={{ maxLength: 128 }}
+                helperText={`${transNote.length}/128`} />
               <OnChainDisclaimer accepted={transDisclaimer} onChange={setTransDisclaimer} />
               <Button variant="contained" fullWidth sx={{ mt: 1 }}
-                onClick={() => transfer(programId, transTo as `0x${string}`, transAmount, transLocked, parseInt(transLockDays) || 0)}
-                disabled={isTransPending || isTransConf || !transTo || !transAmount || !isValidAddress(transTo) || !transDisclaimer}>
+                onClick={() => transfer(programId, transTarget as `0x${string}`, transAmount, transLocked, parseInt(transLockDays) || 0, transNote)}
+                disabled={isTransPending || isTransConf || !transTarget || !transAmount || (!transResolvedAddr && !!transTo && !isValidAddress(transTo)) || !transDisclaimer}>
                 {isTransPending || isTransConf ? <CircularProgress size={16} /> : "Transfer"}
               </Button>
               {transSuccess && <Alert severity="success" sx={{ mt: 1 }}>Transferred!</Alert>}
@@ -560,17 +623,27 @@ function ProgramDetail({ programId }: { programId: number }) {
           {/* Transfer to Parent */}
           {tokenTab === (canTransferSub ? 2 : 1) && (
             <Box sx={{ pt: 2, maxWidth: 480 }}>
+              {parentAddr && (
+                <Alert severity="info" sx={{ mb: 1 }}>
+                  Your parent: <strong>{shortenAddress(parentAddr)}</strong>. Leave wallet empty to transfer directly to them.
+                </Alert>
+              )}
               {transferLimit != null && Number(transferLimit) > 0 && (
                 <Alert severity="info" sx={{ mb: 1 }}>Limit: {String(transferLimit)}% of total balance</Alert>
               )}
-              <TextField label="Parent Wallet (empty = direct parent)" value={parentTo}
+              <TextField label="Override Parent Wallet (optional)" value={parentTo}
                 onChange={(e) => setParentTo(e.target.value)}
-                fullWidth size="small" error={!!parentTo && !isValidAddress(parentTo)} />
+                fullWidth size="small" error={!!parentTo && !isValidAddress(parentTo)}
+                helperText="Leave empty to transfer to your direct parent" />
               <TextField label="Amount (FULA)" value={parentAmount} onChange={(e) => setParentAmount(e.target.value)}
                 fullWidth size="small" type="number" sx={{ mt: 1 }} />
+              <TextField label="Note (optional, max 128)" value={parentNote}
+                onChange={(e) => setParentNote(e.target.value.slice(0, 128))}
+                fullWidth size="small" sx={{ mt: 1 }} inputProps={{ maxLength: 128 }}
+                helperText={`${parentNote.length}/128`} />
               <OnChainDisclaimer accepted={parentDisclaimer} onChange={setParentDisclaimer} />
               <Button variant="contained" fullWidth sx={{ mt: 1 }}
-                onClick={() => transferBack(programId, (parentTo || "0x0000000000000000000000000000000000000000") as `0x${string}`, parentAmount)}
+                onClick={() => transferBack(programId, (parentTo || "0x0000000000000000000000000000000000000000") as `0x${string}`, parentAmount, parentNote)}
                 disabled={isTransBackPending || isTransBackConf || !parentAmount || !parentDisclaimer}>
                 {isTransBackPending || isTransBackConf ? <CircularProgress size={16} /> : "Transfer to Parent"}
               </Button>
@@ -623,7 +696,7 @@ function ProgramDetail({ programId }: { programId: number }) {
             fullWidth margin="normal" placeholder="0x..."
             error={!!paWallet && !paWalletValid}
             helperText={paWallet && !paWalletValid ? "Invalid wallet address" : !paWallet ? "Walletless: an edit code will be generated for claiming" : ""} />
-          <TextField label="Member ID" value={paMemberId} onChange={(e) => setPaMemberId(e.target.value)}
+          <TextField label="Member ID" value={paMemberId} onChange={(e) => setPaMemberId(e.target.value.toUpperCase())}
             fullWidth margin="normal" inputProps={{ maxLength: 12 }} />
           <FormControl fullWidth margin="normal">
             <InputLabel>Member Type</InputLabel>
@@ -660,7 +733,7 @@ function ProgramDetail({ programId }: { programId: number }) {
             fullWidth margin="normal" placeholder="0x..."
             error={!!mWallet && !mWalletValid}
             helperText={mWallet && !mWalletValid ? "Invalid wallet address" : !mWallet ? "Walletless: an edit code will be generated for claiming" : ""} />
-          <TextField label="Member ID" value={mMemberId} onChange={(e) => setMMemberId(e.target.value)}
+          <TextField label="Member ID" value={mMemberId} onChange={(e) => setMMemberId(e.target.value.toUpperCase())}
             fullWidth margin="normal" inputProps={{ maxLength: 12 }} />
           <FormControl fullWidth margin="normal">
             <InputLabel>Role</InputLabel>
