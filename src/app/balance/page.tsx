@@ -164,7 +164,7 @@ function OwnerActions({ memberWallet, initialProgramId }: { memberWallet: string
   const [depositRewardType, setDepositRewardType] = useState(0);
   const [depositNote, setDepositNote] = useState("");
   const { deposit: depositTokens, isApproving, isDepositing, isPending: isDepPending, isSuccess: depositSuccess, error: depositError } = useDepositTokens();
-  const { data: rewardTypesData } = useRewardTypes();
+  const { data: rewardTypesData } = useRewardTypes(pid);
 
   const [disclaimer, setDisclaimer] = useState(false);
   const [actionTab, setActionTab] = useState(0);
@@ -177,7 +177,7 @@ function OwnerActions({ memberWallet, initialProgramId }: { memberWallet: string
       <TextField label="Program ID" value={actionProgramId} onChange={(e) => setActionProgramId(e.target.value)}
         type="number" size="small" sx={{ width: 150, mb: 2 }} />
 
-      <Tabs value={actionTab} onChange={(_, v) => setActionTab(v)} sx={{ borderBottom: 1, borderColor: "divider" }}>
+      <Tabs value={actionTab} onChange={(_, v) => setActionTab(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: 1, borderColor: "divider" }}>
         <Tab label="Deposit" />
         <Tab label="Transfer to Parent" />
         <Tab label="Withdraw" />

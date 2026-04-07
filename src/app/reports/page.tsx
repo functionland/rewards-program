@@ -18,9 +18,8 @@ import { formatFula, shortenAddress, fromBytes16, toBytes12 } from "@/lib/utils"
 export default function ReportsPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const { data: rewardTypesData } = useRewardTypes();
-
   const [filterProgramId, setFilterProgramId] = useState("");
+  const { data: rewardTypesData } = useRewardTypes(Number(filterProgramId) || 0);
   const [timeRange, setTimeRange] = useState<TimeRange>("7d");
   const [trigger, setTrigger] = useState(0);
   const [page, setPage] = useState(0);

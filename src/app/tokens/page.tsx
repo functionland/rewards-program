@@ -11,7 +11,7 @@ import { useAccount, useReadContract } from "wagmi";
 import { zeroAddress } from "viem";
 import {
   useDepositTokens, useTransferToSubMember, useTransferToParent,
-  useWithdraw, useMemberBalance, useTokenBalance, useRewardTypes, useTransferLimit,
+  useWithdraw, useMemberBalance, useTokenBalance, useRewardTypes, useSubTypes, useTransferLimit,
 } from "@/hooks/useRewardsProgram";
 import { formatFula, toBytes12, fromBytes12, isValidAddress, formatContractError, fromBytes16, shortenAddress } from "@/lib/utils";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
@@ -33,7 +33,7 @@ export default function TokensPage() {
   const { data: walletBalance } = useTokenBalance(address);
 
   // Reward types
-  const { data: rewardTypesData } = useRewardTypes();
+  const { data: rewardTypesData } = useRewardTypes(pid);
 
   // Transfer limit
   const { data: transferLimitData } = useTransferLimit(pid);
@@ -52,8 +52,11 @@ export default function TokensPage() {
   const [transferLocked, setTransferLocked] = useState(true);
   const [transferLockDays, setTransferLockDays] = useState("0");
   const [transferNote, setTransferNote] = useState("");
+  const [transferRewardType, setTransferRewardType] = useState(0);
+  const [transferSubType, setTransferSubType] = useState(0);
   const [transferDisclaimer, setTransferDisclaimer] = useState(false);
   const [scanInfo, setScanInfo] = useState("");
+  const { data: transferSubTypesData } = useSubTypes(pid, transferRewardType);
   const { transfer, isPending: isTransferring, isConfirming: isTransConfirming, isSuccess: transferSuccess, error: transferError } = useTransferToSubMember();
 
   // Resolve member code → storage key
@@ -152,7 +155,7 @@ export default function TokensPage() {
       )}
 
       <Paper sx={{ p: 3 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)}>
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
           <Tab label="Deposit" />
           <Tab label="Transfer to Sub-Member" />
           <Tab label="Transfer to Parent" />
@@ -245,13 +248,39 @@ export default function TokensPage() {
               </Box>
             </Grid>
           </Grid>
+          {rewardTypesData && (rewardTypesData as [number[], `0x${string}`[]])[0]?.length > 0 && (
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Reward Type</InputLabel>
+              <Select value={transferRewardType} onChange={(e) => { setTransferRewardType(Number(e.target.value)); setTransferSubType(0); }} label="Reward Type">
+                <MenuItem value={0}>None</MenuItem>
+                {(rewardTypesData as [number[], `0x${string}`[]])[0].map((id: number, idx: number) => (
+                  <MenuItem key={id} value={id}>
+                    {fromBytes16((rewardTypesData as [number[], `0x${string}`[]])[1][idx]) || `Type ${id}`}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+          {transferRewardType > 0 && transferSubTypesData && (transferSubTypesData as [number[], `0x${string}`[]])[0]?.length > 0 && (
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Sub-Type</InputLabel>
+              <Select value={transferSubType} onChange={(e) => setTransferSubType(Number(e.target.value))} label="Sub-Type">
+                <MenuItem value={0}>None</MenuItem>
+                {(transferSubTypesData as [number[], `0x${string}`[]])[0].map((id: number, idx: number) => (
+                  <MenuItem key={id} value={id}>
+                    {fromBytes16((transferSubTypesData as [number[], `0x${string}`[]])[1][idx]) || `Sub-Type ${id}`}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
           <TextField label="Note (optional, max 128 chars)" value={transferNote}
             onChange={(e) => setTransferNote(e.target.value.slice(0, 128))}
             fullWidth margin="normal" inputProps={{ maxLength: 128 }}
             helperText={`${transferNote.length}/128`} />
           <OnChainDisclaimer accepted={transferDisclaimer} onChange={setTransferDisclaimer} />
           <Button variant="contained" sx={{ mt: 2 }}
-            onClick={() => transfer(pid, transferTarget as `0x${string}`, transferAmount, transferLocked, parseInt(transferLockDays), transferNote)}
+            onClick={() => transfer(pid, transferTarget as `0x${string}`, transferAmount, transferLocked, parseInt(transferLockDays), transferRewardType, transferSubType, transferNote)}
             disabled={isTransferring || isTransConfirming || !transferTarget || !transferAmount || !transferDisclaimer || (!resolvedAddr && !transferToValid)}>
             {isTransferring || isTransConfirming ? <CircularProgress size={20} /> : "Transfer"}
           </Button>

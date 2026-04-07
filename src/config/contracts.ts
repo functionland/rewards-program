@@ -153,7 +153,9 @@ export const REWARDS_PROGRAM_ABI = [
     name: "getRewardTypes",
     type: "function",
     stateMutability: "view",
-    inputs: [],
+    inputs: [
+      { name: "programId", type: "uint32" },
+    ],
     outputs: [
       { name: "ids", type: "uint8[]" },
       { name: "names", type: "bytes16[]" },
@@ -344,6 +346,8 @@ export const REWARDS_PROGRAM_ABI = [
       { name: "amount", type: "uint256" },
       { name: "locked", type: "bool" },
       { name: "lockTimeDays", type: "uint32" },
+      { name: "rewardType", type: "uint8" },
+      { name: "subTypeId", type: "uint8" },
       { name: "note", type: "string" },
     ],
     outputs: [],
@@ -403,6 +407,7 @@ export const REWARDS_PROGRAM_ABI = [
     type: "function",
     stateMutability: "nonpayable",
     inputs: [
+      { name: "programId", type: "uint32" },
       { name: "typeId", type: "uint8" },
       { name: "name", type: "bytes16" },
     ],
@@ -413,6 +418,7 @@ export const REWARDS_PROGRAM_ABI = [
     type: "function",
     stateMutability: "nonpayable",
     inputs: [
+      { name: "programId", type: "uint32" },
       { name: "typeId", type: "uint8" },
     ],
     outputs: [],
@@ -486,6 +492,8 @@ export const REWARDS_PROGRAM_ABI = [
       { name: "amount", type: "uint256", indexed: false },
       { name: "locked", type: "bool", indexed: false },
       { name: "lockTimeDays", type: "uint32", indexed: false },
+      { name: "rewardType", type: "uint8", indexed: false },
+      { name: "subTypeId", type: "uint8", indexed: false },
     ],
   },
   {

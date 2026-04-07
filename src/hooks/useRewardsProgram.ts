@@ -60,11 +60,13 @@ export function useProgramCodeToId(code: string) {
   });
 }
 
-export function useRewardTypes() {
+export function useRewardTypes(programId: number) {
   return useReadContract({
     address: CONTRACTS.rewardsProgram,
     abi: REWARDS_PROGRAM_ABI,
     functionName: "getRewardTypes",
+    args: [programId],
+    query: { enabled: programId > 0 },
   });
 }
 
@@ -213,6 +215,8 @@ export function useTransferToSubMember() {
     amount: string,
     locked: boolean,
     lockTimeDays: number,
+    rewardType: number = 0,
+    subTypeId: number = 0,
     note: string = ""
   ) => {
     const parsed = safeParseAmount(amount);
@@ -221,7 +225,7 @@ export function useTransferToSubMember() {
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "transferToSubMember",
-      args: [programId, to, parsed, locked, lockTimeDays, note],
+      args: [programId, to, parsed, locked, lockTimeDays, rewardType, subTypeId, note],
     });
   };
 
@@ -379,12 +383,12 @@ export function useAddRewardType() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   useRefetchOnSuccess(isSuccess);
 
-  const addRewardType = (typeId: number, name: string) => {
+  const addRewardType = (programId: number, typeId: number, name: string) => {
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "addRewardType",
-      args: [typeId, toBytes16(name)],
+      args: [programId, typeId, toBytes16(name)],
     });
   };
 
@@ -491,12 +495,12 @@ export function useRemoveRewardType() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   useRefetchOnSuccess(isSuccess);
 
-  const removeRewardType = (typeId: number) => {
+  const removeRewardType = (programId: number, typeId: number) => {
     writeContract({
       address: CONTRACTS.rewardsProgram,
       abi: REWARDS_PROGRAM_ABI,
       functionName: "removeRewardType",
-      args: [typeId],
+      args: [programId, typeId],
     });
   };
 

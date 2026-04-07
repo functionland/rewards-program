@@ -72,8 +72,8 @@ function ProgramRow({ programId, filterMine, wallet, isAdmin }: { programId: num
 
 /* -- Reward Types Management (inline) -- */
 
-function RewardTypesSection({ isAdmin }: { isAdmin: boolean }) {
-  const { data: rewardTypesData } = useRewardTypes();
+function RewardTypesSection({ programId, isAdmin }: { programId: number; isAdmin: boolean }) {
+  const { data: rewardTypesData } = useRewardTypes(programId);
   const { addRewardType, isPending: isAddingRT, isConfirming: isConfirmingRT, isSuccess: addRTSuccess, error: addRTError } = useAddRewardType();
   const { removeRewardType, isPending: isRemovingRT, isConfirming: isConfirmingRemRT } = useRemoveRewardType();
   const [rtId, setRtId] = useState("");
@@ -107,7 +107,7 @@ function RewardTypesSection({ isAdmin }: { isAdmin: boolean }) {
                 <TableCell>{fromBytes16(names[idx])}</TableCell>
                 {isAdmin && (
                   <TableCell>
-                    <IconButton size="small" color="error" onClick={() => removeRewardType(id)}
+                    <IconButton size="small" color="error" onClick={() => removeRewardType(programId, id)}
                       disabled={isRemovingRT || isConfirmingRemRT}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
@@ -127,7 +127,7 @@ function RewardTypesSection({ isAdmin }: { isAdmin: boolean }) {
             <TextField label="Name" value={rtName} onChange={(e) => setRtName(e.target.value)}
               size="small" sx={{ flexGrow: 1, minWidth: 120 }} inputProps={{ maxLength: 16 }} />
             <Button variant="outlined" size="small"
-              onClick={() => addRewardType(parseInt(rtId), rtName)}
+              onClick={() => addRewardType(programId, parseInt(rtId), rtName)}
               disabled={isAddingRT || isConfirmingRT || !rtId || !rtName}>
               {isAddingRT || isConfirmingRT ? <CircularProgress size={16} /> : "Add"}
             </Button>
@@ -143,7 +143,7 @@ function RewardTypesSection({ isAdmin }: { isAdmin: boolean }) {
 /* -- Sub-Types Management (inline) -- */
 
 function SubTypesSection({ programId, canManage }: { programId: number; canManage: boolean }) {
-  const { data: rewardTypesData } = useRewardTypes();
+  const { data: rewardTypesData } = useRewardTypes(programId);
   const [selectedRT, setSelectedRT] = useState(0);
   const { data: subTypesData } = useSubTypes(programId, selectedRT);
   const { addSubType, isPending: isAddingST, isConfirming: isConfirmingST, isSuccess: addSTSuccess, error: addSTError } = useAddSubType();
@@ -307,13 +307,17 @@ function ProgramDetail({ programId }: { programId: number }) {
   const [depNote, setDepNote] = useState("");
   const [depDisclaimer, setDepDisclaimer] = useState(false);
   const [depRewardType, setDepRewardType] = useState(0);
-  const { data: rewardTypesForDep } = useRewardTypes();
+  const { data: rewardTypesForDep } = useRewardTypes(programId);
   const [transMemberCode, setTransMemberCode] = useState("");
   const [transTo, setTransTo] = useState("");
   const [transAmount, setTransAmount] = useState("");
   const [transLocked, setTransLocked] = useState(true);
   const [transLockDays, setTransLockDays] = useState("0");
   const [transNote, setTransNote] = useState("");
+  const [transRewardType, setTransRewardType] = useState(0);
+  const [transSubType, setTransSubType] = useState(0);
+  const { data: rewardTypesForTrans } = useRewardTypes(programId);
+  const { data: subTypesForTrans } = useSubTypes(programId, transRewardType);
   const [transDisclaimer, setTransDisclaimer] = useState(false);
   const [parentTo, setParentTo] = useState("");
   const [parentAmount, setParentAmount] = useState("");
@@ -620,13 +624,39 @@ function ProgramDetail({ programId }: { programId: number }) {
                   <InfoOutlinedIcon sx={{ fontSize: 16, color: "text.secondary", cursor: "help" }} />
                 </Tooltip>
               </Box>
+              {rewardTypesForTrans && (rewardTypesForTrans as [number[], `0x${string}`[]])[0]?.length > 0 && (
+                <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+                  <InputLabel>Reward Type</InputLabel>
+                  <Select value={transRewardType} onChange={(e) => { setTransRewardType(Number(e.target.value)); setTransSubType(0); }} label="Reward Type">
+                    <MenuItem value={0}>None</MenuItem>
+                    {(rewardTypesForTrans as [number[], `0x${string}`[]])[0].map((id: number, idx: number) => (
+                      <MenuItem key={id} value={id}>
+                        {fromBytes16((rewardTypesForTrans as [number[], `0x${string}`[]])[1][idx]) || `Type ${id}`}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+              {transRewardType > 0 && subTypesForTrans && (subTypesForTrans as [number[], `0x${string}`[]])[0]?.length > 0 && (
+                <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+                  <InputLabel>Sub-Type</InputLabel>
+                  <Select value={transSubType} onChange={(e) => setTransSubType(Number(e.target.value))} label="Sub-Type">
+                    <MenuItem value={0}>None</MenuItem>
+                    {(subTypesForTrans as [number[], `0x${string}`[]])[0].map((id: number, idx: number) => (
+                      <MenuItem key={id} value={id}>
+                        {fromBytes16((subTypesForTrans as [number[], `0x${string}`[]])[1][idx]) || `Sub-Type ${id}`}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
               <TextField label="Note (optional, max 128)" value={transNote}
                 onChange={(e) => setTransNote(e.target.value.slice(0, 128))}
                 fullWidth size="small" sx={{ mt: 1 }} inputProps={{ maxLength: 128 }}
                 helperText={`${transNote.length}/128`} />
               <OnChainDisclaimer accepted={transDisclaimer} onChange={setTransDisclaimer} />
               <Button variant="contained" fullWidth sx={{ mt: 1 }}
-                onClick={() => transfer(programId, transTarget as `0x${string}`, transAmount, transLocked, parseInt(transLockDays) || 0, transNote)}
+                onClick={() => transfer(programId, transTarget as `0x${string}`, transAmount, transLocked, parseInt(transLockDays) || 0, transRewardType, transSubType, transNote)}
                 disabled={isTransPending || isTransConf || !transTarget || !transAmount || (!transResolvedAddr && !!transTo && !isValidAddress(transTo)) || !transDisclaimer}>
                 {isTransPending || isTransConf ? <CircularProgress size={16} /> : "Transfer"}
               </Button>
@@ -689,7 +719,7 @@ function ProgramDetail({ programId }: { programId: number }) {
       {(isAdmin || canManageSubTypes) && program.active && (
         <Paper sx={{ p: 2, mb: 3 }}>
           <Typography variant="h6" gutterBottom>Reward Configuration</Typography>
-          <RewardTypesSection isAdmin={isAdmin || isPA} />
+          <RewardTypesSection programId={programId} isAdmin={isAdmin || isPA} />
           <SubTypesSection programId={programId} canManage={canManageSubTypes} />
         </Paper>
       )}
