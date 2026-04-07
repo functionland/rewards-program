@@ -306,6 +306,8 @@ function ProgramDetail({ programId }: { programId: number }) {
   const [depAmount, setDepAmount] = useState("");
   const [depNote, setDepNote] = useState("");
   const [depDisclaimer, setDepDisclaimer] = useState(false);
+  const [depRewardType, setDepRewardType] = useState(0);
+  const { data: rewardTypesForDep } = useRewardTypes();
   const [transMemberCode, setTransMemberCode] = useState("");
   const [transTo, setTransTo] = useState("");
   const [transAmount, setTransAmount] = useState("");
@@ -543,12 +545,25 @@ function ProgramDetail({ programId }: { programId: number }) {
             <Box sx={{ pt: 2, maxWidth: 480 }}>
               <TextField label="Amount (FULA)" value={depAmount} onChange={(e) => setDepAmount(e.target.value)}
                 fullWidth size="small" type="number" />
+              {rewardTypesForDep && (rewardTypesForDep as [number[], `0x${string}`[]])[0]?.length > 0 && (
+                <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+                  <InputLabel>Reward Type</InputLabel>
+                  <Select value={depRewardType} onChange={(e) => setDepRewardType(Number(e.target.value))} label="Reward Type">
+                    <MenuItem value={0}>None</MenuItem>
+                    {(rewardTypesForDep as [number[], `0x${string}`[]])[0].map((id: number, idx: number) => (
+                      <MenuItem key={id} value={id}>
+                        {fromBytes16((rewardTypesForDep as [number[], `0x${string}`[]])[1][idx]) || `Type ${id}`}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
               <TextField label="Note (max 128)" value={depNote}
                 onChange={(e) => setDepNote(e.target.value.slice(0, 128))}
                 fullWidth size="small" sx={{ mt: 1 }} inputProps={{ maxLength: 128 }} />
               <OnChainDisclaimer accepted={depDisclaimer} onChange={setDepDisclaimer} />
               <Button variant="contained" fullWidth sx={{ mt: 1 }}
-                onClick={() => depositTokens(programId, depAmount, 0, depNote)}
+                onClick={() => depositTokens(programId, depAmount, depRewardType, depNote)}
                 disabled={isDepPending || !depAmount || !depDisclaimer}>
                 {isDepApproving ? <><CircularProgress size={16} sx={{ mr: 0.5 }} /> Approving...</>
                   : isDepDepositing ? <><CircularProgress size={16} sx={{ mr: 0.5 }} /> Depositing...</>
