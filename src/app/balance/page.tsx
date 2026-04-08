@@ -9,9 +9,17 @@ import {
 } from "@mui/material";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { useSearchParams } from "next/navigation";
-import { zeroAddress } from "viem";
+import { zeroAddress, encodePacked, keccak256, getAddress } from "viem";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberTypeLabels } from "@/config/contracts";
 import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatContractError, fromBytes16 } from "@/lib/utils";
+
+/** Compute the virtual storage key for a walletless member (mirrors _virtualAddr in contract) */
+function virtualAddr(memberID: string, programId: number): `0x${string}` {
+  const memberIDBytes = toBytes12(memberID);
+  const hash = keccak256(encodePacked(["bytes12", "uint32"], [memberIDBytes, programId]));
+  // Take last 20 bytes (address = uint160 of uint256)
+  return getAddress("0x" + hash.slice(-40)) as `0x${string}`;
+}
 import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useDepositTokens, useRewardTypes, useTransferLimit, useClaimMember } from "@/hooks/useRewardsProgram";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
@@ -32,12 +40,19 @@ function MemberProgramRow({ memberID, programId }: { memberID: string; programId
 
   const { data: program } = useProgram(programId);
 
+  // For walletless members, compute the virtual storage key to query balance
+  const balanceKey: `0x${string}` | undefined = member?.active
+    ? (member.wallet && member.wallet !== zeroAddress
+        ? member.wallet as `0x${string}`
+        : virtualAddr(memberID, programId))
+    : undefined;
+
   const { data: balance } = useReadContract({
     address: CONTRACTS.rewardsProgram,
     abi: REWARDS_PROGRAM_ABI,
     functionName: "getBalance",
-    args: member?.wallet && member.wallet !== zeroAddress ? [programId, member.wallet as `0x${string}`] : undefined,
-    query: { enabled: !!member?.wallet && member.wallet !== zeroAddress },
+    args: balanceKey ? [programId, balanceKey] : undefined,
+    query: { enabled: !!balanceKey },
   });
 
   if (!member || !member.active) return null;
