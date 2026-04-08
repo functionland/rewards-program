@@ -6,7 +6,7 @@ import {
   TableContainer, TableHead, TableRow, TextField, Button,
   Select, MenuItem, FormControl, InputLabel, Alert, Chip,
   LinearProgress, TablePagination, useMediaQuery, useTheme,
-  InputAdornment,
+  InputAdornment, ListSubheader,
 } from "@mui/material";
 import { parseUnits } from "viem";
 import { useReadContract } from "wagmi";
@@ -14,6 +14,32 @@ import { CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
 import { useRewardTypes, useProgramCodeToId } from "@/hooks/useRewardsProgram";
 import { useChunkedEventLogs, type TimeRange } from "@/hooks/useChunkedEventLogs";
 import { formatFula, shortenAddress, fromBytes16, toBytes12 } from "@/lib/utils";
+
+// Event type → chip color
+type ChipColor = "success" | "info" | "warning" | "secondary" | "primary" | "default" | "error";
+const EVENT_CHIP_COLOR: Record<string, ChipColor> = {
+  Deposit: "success", Transfer: "info", TransferToParent: "info", Withdrawal: "warning", TimeLockResolved: "warning",
+  MemberAdded: "secondary", PAAssigned: "secondary", MemberRemoved: "error", MemberClaimed: "secondary",
+  WalletChanged: "secondary", MemberIDUpdated: "secondary", TypeChanged: "secondary",
+  ProgramCreated: "primary", ProgramUpdated: "primary", ProgramDeactivated: "error", LimitUpdated: "primary",
+  RewardTypeAdded: "default", RewardTypeRemoved: "default", SubTypeAdded: "default", SubTypeRemoved: "default",
+};
+
+// Friendly labels for the filter dropdown
+const EVENT_LABELS: Record<string, string> = {
+  Deposit: "Deposit", Transfer: "Transfer to Member", TransferToParent: "Transfer to Parent",
+  Withdrawal: "Withdrawal", TimeLockResolved: "Time Lock Resolved",
+  MemberAdded: "Member Added", PAAssigned: "PA Assigned", MemberRemoved: "Member Removed",
+  MemberClaimed: "Member Claimed", WalletChanged: "Wallet Changed",
+  MemberIDUpdated: "Member ID Updated", TypeChanged: "Member Type Changed",
+  ProgramCreated: "Program Created", ProgramUpdated: "Program Updated",
+  ProgramDeactivated: "Program Deactivated", LimitUpdated: "Transfer Limit Updated",
+  RewardTypeAdded: "Reward Type Added", RewardTypeRemoved: "Reward Type Removed",
+  SubTypeAdded: "Sub-Type Added", SubTypeRemoved: "Sub-Type Removed",
+};
+
+// Token events have amounts
+const TOKEN_EVENTS = new Set(["Deposit", "Transfer", "TransferToParent", "Withdrawal", "TimeLockResolved"]);
 
 export default function ReportsPage() {
   const theme = useTheme();
@@ -36,7 +62,7 @@ export default function ReportsPage() {
   const [filterAmountMin, setFilterAmountMin] = useState("");
   const [filterAmountMax, setFilterAmountMax] = useState("");
 
-  // Resolve member ID → storage key for filtering
+  // Resolve member ID -> storage key for filtering
   const filterMemberIDBytes = filterMemberID.length > 0 ? toBytes12(filterMemberID) : undefined;
   const { data: filterMemberKey } = useReadContract({
     address: CONTRACTS.rewardsProgram,
@@ -88,6 +114,8 @@ export default function ReportsPage() {
   const totalDeposits = filteredEvents.filter(e => e.type === "Deposit").reduce((s, e) => s + e.amount, BigInt(0));
   const totalTransfers = filteredEvents.filter(e => e.type === "Transfer" || e.type === "TransferToParent").reduce((s, e) => s + e.amount, BigInt(0));
   const totalWithdrawals = filteredEvents.filter(e => e.type === "Withdrawal").reduce((s, e) => s + e.amount, BigInt(0));
+  const memberEventCount = filteredEvents.filter(e => ["MemberAdded", "PAAssigned", "MemberRemoved", "MemberClaimed", "WalletChanged", "MemberIDUpdated", "TypeChanged"].includes(e.type)).length;
+  const adminEventCount = filteredEvents.filter(e => ["ProgramCreated", "ProgramUpdated", "ProgramDeactivated", "LimitUpdated", "RewardTypeAdded", "RewardTypeRemoved", "SubTypeAdded", "SubTypeRemoved"].includes(e.type)).length;
 
   const rewardTypeNames: Record<number, string> = {};
   if (rewardTypesData) {
@@ -106,7 +134,6 @@ export default function ReportsPage() {
     }
   };
 
-  // Pagination — clamp page if filters reduce result count
   const safePage = page * rowsPerPage >= filteredEvents.length && filteredEvents.length > 0 ? 0 : page;
   const paginatedEvents = filteredEvents.slice(
     safePage * rowsPerPage,
@@ -165,10 +192,29 @@ export default function ReportsPage() {
                 <InputLabel>Event Type</InputLabel>
                 <Select value={filterEventType} onChange={(e) => { setFilterEventType(e.target.value); setPage(0); }} label="Event Type">
                   <MenuItem value="">All</MenuItem>
+                  <ListSubheader>Token Events</ListSubheader>
                   <MenuItem value="Deposit">Deposit</MenuItem>
-                  <MenuItem value="Transfer">Transfer</MenuItem>
-                  <MenuItem value="TransferToParent">To Parent</MenuItem>
+                  <MenuItem value="Transfer">Transfer to Member</MenuItem>
+                  <MenuItem value="TransferToParent">Transfer to Parent</MenuItem>
                   <MenuItem value="Withdrawal">Withdrawal</MenuItem>
+                  <MenuItem value="TimeLockResolved">Time Lock Resolved</MenuItem>
+                  <ListSubheader>Member Events</ListSubheader>
+                  <MenuItem value="MemberAdded">Member Added</MenuItem>
+                  <MenuItem value="PAAssigned">PA Assigned</MenuItem>
+                  <MenuItem value="MemberRemoved">Member Removed</MenuItem>
+                  <MenuItem value="MemberClaimed">Member Claimed</MenuItem>
+                  <MenuItem value="WalletChanged">Wallet Changed</MenuItem>
+                  <MenuItem value="MemberIDUpdated">Member ID Updated</MenuItem>
+                  <MenuItem value="TypeChanged">Member Type Changed</MenuItem>
+                  <ListSubheader>Program / Admin</ListSubheader>
+                  <MenuItem value="ProgramCreated">Program Created</MenuItem>
+                  <MenuItem value="ProgramUpdated">Program Updated</MenuItem>
+                  <MenuItem value="ProgramDeactivated">Program Deactivated</MenuItem>
+                  <MenuItem value="LimitUpdated">Transfer Limit Updated</MenuItem>
+                  <MenuItem value="RewardTypeAdded">Reward Type Added</MenuItem>
+                  <MenuItem value="RewardTypeRemoved">Reward Type Removed</MenuItem>
+                  <MenuItem value="SubTypeAdded">Sub-Type Added</MenuItem>
+                  <MenuItem value="SubTypeRemoved">Sub-Type Removed</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -228,30 +274,48 @@ export default function ReportsPage() {
       {filteredEvents.length > 0 && (
         <>
           <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={6} sm={2.4}>
               <Paper sx={{ p: 2, textAlign: "center" }}>
-                <Typography color="text.secondary" variant="body2">Total Deposits</Typography>
-                <Typography variant="h6" color="success.main">{formatFula(totalDeposits)} FULA</Typography>
+                <Typography color="text.secondary" variant="body2">Deposits</Typography>
+                <Typography variant="h6" color="success.main">{formatFula(totalDeposits)}</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {filteredEvents.filter(e => e.type === "Deposit").length} transactions
+                  {filteredEvents.filter(e => e.type === "Deposit").length} txns
                 </Typography>
               </Paper>
             </Grid>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={6} sm={2.4}>
               <Paper sx={{ p: 2, textAlign: "center" }}>
-                <Typography color="text.secondary" variant="body2">Total Transfers</Typography>
-                <Typography variant="h6" color="info.main">{formatFula(totalTransfers)} FULA</Typography>
+                <Typography color="text.secondary" variant="body2">Transfers</Typography>
+                <Typography variant="h6" color="info.main">{formatFula(totalTransfers)}</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {filteredEvents.filter(e => e.type === "Transfer" || e.type === "TransferToParent").length} transactions
+                  {filteredEvents.filter(e => e.type === "Transfer" || e.type === "TransferToParent").length} txns
                 </Typography>
               </Paper>
             </Grid>
-            <Grid item xs={12} sm={4}>
+            <Grid item xs={6} sm={2.4}>
               <Paper sx={{ p: 2, textAlign: "center" }}>
-                <Typography color="text.secondary" variant="body2">Total Withdrawals</Typography>
-                <Typography variant="h6" color="warning.main">{formatFula(totalWithdrawals)} FULA</Typography>
+                <Typography color="text.secondary" variant="body2">Withdrawals</Typography>
+                <Typography variant="h6" color="warning.main">{formatFula(totalWithdrawals)}</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {filteredEvents.filter(e => e.type === "Withdrawal").length} transactions
+                  {filteredEvents.filter(e => e.type === "Withdrawal").length} txns
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={6} sm={2.4}>
+              <Paper sx={{ p: 2, textAlign: "center" }}>
+                <Typography color="text.secondary" variant="body2">Member Events</Typography>
+                <Typography variant="h6" color="secondary.main">{memberEventCount}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  added / claimed / changed
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={2.4}>
+              <Paper sx={{ p: 2, textAlign: "center" }}>
+                <Typography color="text.secondary" variant="body2">Admin Events</Typography>
+                <Typography variant="h6" color="primary.main">{adminEventCount}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  programs / types / limits
                 </Typography>
               </Paper>
             </Grid>
@@ -264,8 +328,8 @@ export default function ReportsPage() {
                   <TableCell>Type</TableCell>
                   <TableCell>Program</TableCell>
                   <TableCell>Wallet</TableCell>
-                  <TableCell>Amount (FULA)</TableCell>
-                  <TableCell>Reward Type</TableCell>
+                  <TableCell>Amount / Detail</TableCell>
+                  {!isMobile && <TableCell>Reward Type</TableCell>}
                   {!isMobile && <TableCell>Note</TableCell>}
                   {!isMobile && <TableCell>Block</TableCell>}
                 </TableRow>
@@ -275,19 +339,33 @@ export default function ReportsPage() {
                   <TableRow key={`${row.txHash}-${i}`} hover>
                     <TableCell>
                       <Chip
-                        label={row.type}
+                        label={EVENT_LABELS[row.type] || row.type}
                         size="small"
-                        color={row.type === "Deposit" ? "success" : row.type === "Withdrawal" ? "warning" : "info"}
+                        color={EVENT_CHIP_COLOR[row.type] || "default"}
                       />
                     </TableCell>
                     <TableCell>{row.programId}</TableCell>
                     <TableCell sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}>
-                      {shortenAddress(row.wallet)}
+                      {row.wallet ? shortenAddress(row.wallet) : "-"}
                     </TableCell>
-                    <TableCell>{formatFula(row.amount)}</TableCell>
                     <TableCell>
-                      {row.rewardType !== undefined ? (rewardTypeNames[row.rewardType] || row.rewardType) : "-"}
+                      {TOKEN_EVENTS.has(row.type) && row.amount > BigInt(0)
+                        ? formatFula(row.amount)
+                        : ""}
+                      {row.detail && (
+                        <Typography variant="caption" color="text.secondary" component="div"
+                          sx={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {row.detail}
+                        </Typography>
+                      )}
                     </TableCell>
+                    {!isMobile && (
+                      <TableCell>
+                        {row.rewardType !== undefined && row.rewardType > 0
+                          ? (rewardTypeNames[row.rewardType] || row.rewardType)
+                          : "-"}
+                      </TableCell>
+                    )}
                     {!isMobile && (
                       <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {row.note || "-"}
