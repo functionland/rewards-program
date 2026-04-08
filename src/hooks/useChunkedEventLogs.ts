@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { type Address, parseAbiItem } from "viem";
+import { type Address, type Hex, parseAbiItem, decodeEventLog } from "viem";
 import { usePublicClient } from "wagmi";
 import { DEPLOYMENT_BLOCK } from "@/config/contracts";
 
 const CHUNK_SIZE = BigInt(9999);
-const MAX_CONCURRENT = 3;
-const DELAY_BETWEEN_BATCHES = 200;
+const MAX_CONCURRENT = 6;
+const DELAY_BETWEEN_BATCHES = 50;
+const FLUSH_INTERVAL = 3; // flush UI every N batches
 const BLOCKS_PER_DAY = BigInt(43200); // ~2s block time on Base
+const BACKOFF_DELAYS = [3000, 6000, 12000, 20000]; // escalating delays on consecutive errors
 
 export type EventRow = {
   type: string;
@@ -44,6 +46,14 @@ const EVENT_WITHDRAWALS = parseAbiItem(
   "event TokensWithdrawn(uint32 indexed programId, address indexed wallet, uint256 amount)"
 );
 
+const ALL_EVENTS = [EVENT_DEPOSITS, EVENT_TRANSFERS, EVENT_PARENT_TRANSFERS, EVENT_WITHDRAWALS] as const;
+
+// Pre-compute topic0 for each event to match returned logs
+const TOPIC_DEPOSIT = EVENT_DEPOSITS.name;
+const TOPIC_TRANSFER = EVENT_TRANSFERS.name;
+const TOPIC_PARENT_TRANSFER = EVENT_PARENT_TRANSFERS.name;
+const TOPIC_WITHDRAWAL = EVENT_WITHDRAWALS.name;
+
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -69,11 +79,70 @@ async function fetchWithRetry<T>(
   throw new Error("Max retries exceeded");
 }
 
+function parseLog(log: { topics: Hex[]; data: Hex; blockNumber: bigint; transactionHash: Hex }): EventRow | null {
+  if (!log.topics.length) return null;
+  try {
+    const decoded = decodeEventLog({
+      abi: ALL_EVENTS,
+      data: log.data,
+      topics: log.topics as [Hex, ...Hex[]],
+    });
+
+    const base = { blockNumber: log.blockNumber, txHash: log.transactionHash };
+    const args = decoded.args as Record<string, unknown>;
+
+    switch (decoded.eventName) {
+      case TOPIC_DEPOSIT:
+        return {
+          ...base,
+          type: "Deposit",
+          depositId: String(args.depositId ?? ""),
+          programId: Number(args.programId),
+          wallet: String(args.wallet ?? ""),
+          amount: BigInt(args.amount as bigint ?? 0),
+          rewardType: Number(args.rewardType ?? 0),
+          note: String(args.note ?? ""),
+        };
+      case TOPIC_TRANSFER:
+        return {
+          ...base,
+          type: "Transfer",
+          programId: Number(args.programId),
+          wallet: String(args.from ?? ""),
+          amount: BigInt(args.amount as bigint ?? 0),
+          rewardType: Number(args.rewardType ?? 0),
+          note: String(args.note ?? ""),
+        };
+      case TOPIC_PARENT_TRANSFER:
+        return {
+          ...base,
+          type: "TransferToParent",
+          programId: Number(args.programId),
+          wallet: String(args.from ?? ""),
+          amount: BigInt(args.amount as bigint ?? 0),
+          note: String(args.note ?? ""),
+        };
+      case TOPIC_WITHDRAWAL:
+        return {
+          ...base,
+          type: "Withdrawal",
+          programId: Number(args.programId),
+          wallet: String(args.wallet ?? ""),
+          amount: BigInt(args.amount as bigint ?? 0),
+        };
+      default:
+        return null;
+    }
+  } catch {
+    return null; // unknown event from contract, skip
+  }
+}
+
 export function useChunkedEventLogs(options: {
   address: Address;
   programId?: number;
   timeRange: TimeRange;
-  trigger: number; // increment to start a new fetch
+  trigger: number;
 }) {
   const { address, programId, timeRange, trigger } = options;
   const publicClient = usePublicClient();
@@ -139,121 +208,77 @@ export function useChunkedEventLogs(options: {
 
         const allRows: EventRow[] = [];
         let completed = 0;
+        let consecutiveErrors = 0;
         const pid = programId !== undefined ? Number(programId) : undefined;
 
         for (let i = 0; i < chunks.length; i += MAX_CONCURRENT) {
           if (signal.aborted) break;
 
+          // Apply backoff delay if we had consecutive errors
+          if (consecutiveErrors > 0) {
+            const backoffIdx = Math.min(consecutiveErrors - 1, BACKOFF_DELAYS.length - 1);
+            await delay(BACKOFF_DELAYS[backoffIdx]);
+          }
+
           const batch = chunks.slice(i, i + MAX_CONCURRENT);
 
-          const batchResults = await Promise.all(
-            batch.map(([from, to]) =>
-              fetchWithRetry(async () => {
-                const [deposits, transfers, parentTransfers, withdrawals] =
-                  await Promise.all([
-                    publicClient.getLogs({
+          try {
+            // Single getLogs per chunk — fetch ALL contract events at once
+            const batchResults = await Promise.all(
+              batch.map(([from, to]) =>
+                fetchWithRetry(async () => {
+                  const logs = await publicClient.request({
+                    method: "eth_getLogs",
+                    params: [{
                       address,
-                      event: EVENT_DEPOSITS,
-                      args: pid !== undefined ? { programId: pid } : undefined,
-                      fromBlock: from,
-                      toBlock: to,
-                    }),
-                    publicClient.getLogs({
-                      address,
-                      event: EVENT_TRANSFERS,
-                      args: pid !== undefined ? { programId: pid } : undefined,
-                      fromBlock: from,
-                      toBlock: to,
-                    }),
-                    publicClient.getLogs({
-                      address,
-                      event: EVENT_PARENT_TRANSFERS,
-                      args: pid !== undefined ? { programId: pid } : undefined,
-                      fromBlock: from,
-                      toBlock: to,
-                    }),
-                    publicClient.getLogs({
-                      address,
-                      event: EVENT_WITHDRAWALS,
-                      args: pid !== undefined ? { programId: pid } : undefined,
-                      fromBlock: from,
-                      toBlock: to,
-                    }),
-                  ]);
-
-                const rows: EventRow[] = [];
-
-                for (const log of deposits) {
-                  if (!log.args) continue;
-                  rows.push({
-                    type: "Deposit",
-                    depositId: log.args.depositId?.toString(),
-                    programId: Number(log.args.programId),
-                    wallet: log.args.wallet || "",
-                    amount: log.args.amount || BigInt(0),
-                    rewardType: log.args.rewardType,
-                    note: log.args.note,
-                    blockNumber: log.blockNumber,
-                    txHash: log.transactionHash,
+                      fromBlock: `0x${from.toString(16)}` as Hex,
+                      toBlock: `0x${to.toString(16)}` as Hex,
+                    }],
                   });
-                }
 
-                for (const log of transfers) {
-                  if (!log.args) continue;
-                  rows.push({
-                    type: "Transfer",
-                    programId: Number(log.args.programId),
-                    wallet: log.args.from || "",
-                    amount: log.args.amount || BigInt(0),
-                    rewardType: log.args.rewardType,
-                    note: log.args.note,
-                    blockNumber: log.blockNumber,
-                    txHash: log.transactionHash,
-                  });
-                }
+                  const rows: EventRow[] = [];
+                  for (const log of logs as Array<{ topics: Hex[]; data: Hex; blockNumber: Hex; transactionHash: Hex }>) {
+                    const parsed = parseLog({
+                      topics: log.topics,
+                      data: log.data,
+                      blockNumber: BigInt(log.blockNumber),
+                      transactionHash: log.transactionHash,
+                    });
+                    if (!parsed) continue;
+                    // Client-side programId filter
+                    if (pid !== undefined && parsed.programId !== pid) continue;
+                    rows.push(parsed);
+                  }
+                  return rows;
+                }, signal)
+              )
+            );
 
-                for (const log of parentTransfers) {
-                  if (!log.args) continue;
-                  rows.push({
-                    type: "TransferToParent",
-                    programId: Number(log.args.programId),
-                    wallet: log.args.from || "",
-                    amount: log.args.amount || BigInt(0),
-                    note: log.args.note,
-                    blockNumber: log.blockNumber,
-                    txHash: log.transactionHash,
-                  });
-                }
+            // Success — reset backoff
+            consecutiveErrors = 0;
 
-                for (const log of withdrawals) {
-                  if (!log.args) continue;
-                  rows.push({
-                    type: "Withdrawal",
-                    programId: Number(log.args.programId),
-                    wallet: log.args.wallet || "",
-                    amount: log.args.amount || BigInt(0),
-                    blockNumber: log.blockNumber,
-                    txHash: log.transactionHash,
-                  });
-                }
-
-                return rows;
-              }, signal)
-            )
-          );
-
-          for (const rows of batchResults) {
-            allRows.push(...rows);
+            for (const rows of batchResults) {
+              allRows.push(...rows);
+            }
+          } catch (err: unknown) {
+            if (signal.aborted) break;
+            consecutiveErrors++;
+            // If we've exhausted backoff delays, give up
+            if (consecutiveErrors > BACKOFF_DELAYS.length) throw err;
+            // Retry this batch by rewinding the loop index
+            i -= MAX_CONCURRENT;
+            continue;
           }
 
           completed += batch.length;
           setCompletedChunks(completed);
           setProgress(completed / chunks.length);
 
-          // Flush progressively to state every batch
-          setEvents([...allRows]);
+          // Flush to UI periodically, not every batch
+          if (completed % FLUSH_INTERVAL === 0 || completed === chunks.length) {
+            setEvents([...allRows]);
+          }
 
-          // Polite delay between batches
           if (i + MAX_CONCURRENT < chunks.length) {
             await delay(DELAY_BETWEEN_BATCHES);
           }
