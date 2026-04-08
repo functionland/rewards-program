@@ -6,8 +6,12 @@ import {
   TableContainer, TableHead, TableRow, TextField, Button,
   Select, MenuItem, FormControl, InputLabel, Alert, Chip,
   LinearProgress, TablePagination, useMediaQuery, useTheme,
-  InputAdornment, ListSubheader,
+  InputAdornment, ListSubheader, Checkbox, ListItemText,
+  Accordion, AccordionSummary, AccordionDetails, Card, CardContent,
+  Stack, Tooltip, IconButton,
 } from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import FilterListIcon from "@mui/icons-material/FilterList";
 import { parseUnits } from "viem";
 import { useReadContract } from "wagmi";
 import { CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
@@ -38,6 +42,13 @@ const EVENT_LABELS: Record<string, string> = {
   SubTypeAdded: "Sub-Type Added", SubTypeRemoved: "Sub-Type Removed",
 };
 
+// Grouped event types for multi-select dropdown
+const EVENT_GROUPS = [
+  { label: "Token Events", types: ["Deposit", "Transfer", "TransferToParent", "Withdrawal", "TimeLockResolved"] },
+  { label: "Member Events", types: ["MemberAdded", "PAAssigned", "MemberRemoved", "MemberClaimed", "WalletChanged", "MemberIDUpdated", "TypeChanged"] },
+  { label: "Program / Admin", types: ["ProgramCreated", "ProgramUpdated", "ProgramDeactivated", "LimitUpdated", "RewardTypeAdded", "RewardTypeRemoved", "SubTypeAdded", "SubTypeRemoved"] },
+];
+
 // Token events have amounts
 const TOKEN_EVENTS = new Set(["Deposit", "Transfer", "TransferToParent", "Withdrawal", "TimeLockResolved"]);
 
@@ -55,12 +66,13 @@ export default function ReportsPage() {
   const [rowsPerPage, setRowsPerPage] = useState(25);
 
   // Client-side filters
-  const [filterEventType, setFilterEventType] = useState<string>("");
+  const [filterEventTypes, setFilterEventTypes] = useState<string[]>([]);
   const [filterRewardType, setFilterRewardType] = useState<number | "">("");
   const [filterWallet, setFilterWallet] = useState("");
   const [filterMemberID, setFilterMemberID] = useState("");
   const [filterAmountMin, setFilterAmountMin] = useState("");
   const [filterAmountMax, setFilterAmountMax] = useState("");
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
 
   // Resolve member ID -> storage key for filtering
   const filterMemberIDBytes = filterMemberID.length > 0 ? toBytes12(filterMemberID) : undefined;
@@ -84,8 +96,9 @@ export default function ReportsPage() {
 
   // Client-side filter chain
   let filteredEvents = events;
-  if (filterEventType) {
-    filteredEvents = filteredEvents.filter(e => e.type === filterEventType);
+  if (filterEventTypes.length > 0) {
+    const typeSet = new Set(filterEventTypes);
+    filteredEvents = filteredEvents.filter(e => typeSet.has(e.type));
   }
   if (filterRewardType !== "") {
     filteredEvents = filteredEvents.filter(r => r.rewardType === undefined || r.rewardType === filterRewardType);
@@ -134,19 +147,30 @@ export default function ReportsPage() {
     }
   };
 
+  const activeFilterCount = (filterEventTypes.length > 0 ? 1 : 0) + (filterRewardType !== "" ? 1 : 0)
+    + (filterWallet ? 1 : 0) + (filterMemberID ? 1 : 0) + (filterAmountMin ? 1 : 0) + (filterAmountMax ? 1 : 0);
+
   const safePage = page * rowsPerPage >= filteredEvents.length && filteredEvents.length > 0 ? 0 : page;
   const paginatedEvents = filteredEvents.slice(
     safePage * rowsPerPage,
     safePage * rowsPerPage + rowsPerPage
   );
 
-  return (
-    <Box>
-      <Typography variant="h4" gutterBottom>Reports</Typography>
+  // Multi-select event type render value
+  const renderEventTypeValue = (selected: string[]) => {
+    if (selected.length === 0) return "All";
+    if (selected.length <= 2) return selected.map(s => EVENT_LABELS[s] || s).join(", ");
+    return `${selected.length} types selected`;
+  };
 
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Fetch Settings</Typography>
-        <Grid container spacing={2} alignItems="center">
+  return (
+    <Box sx={{ px: { xs: 1, sm: 0 } }}>
+      <Typography variant="h4" gutterBottom sx={{ fontSize: { xs: "1.5rem", sm: "2.125rem" } }}>Reports</Typography>
+
+      {/* Fetch Settings */}
+      <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 2 }}>
+        <Typography variant="h6" gutterBottom sx={{ fontSize: { xs: "1rem", sm: "1.25rem" } }}>Fetch Settings</Typography>
+        <Grid container spacing={1.5} alignItems="center">
           <Grid item xs={6} sm={2}>
             <TextField label="Program ID" value={filterProgramId}
               onChange={(e) => { setFilterProgramId(e.target.value); if (e.target.value) setFilterProgramCode(""); }}
@@ -159,7 +183,7 @@ export default function ReportsPage() {
               inputProps={{ maxLength: 8 }}
               helperText={filterProgramCode && !resolvedProgramId ? "Not found" : filterProgramCode && resolvedProgramId ? `ID: ${resolvedProgramId}` : ""} />
           </Grid>
-          <Grid item xs={12} sm={4}>
+          <Grid item xs={6} sm={4}>
             <FormControl fullWidth size="small">
               <InputLabel>Time Range</InputLabel>
               <Select value={timeRange} onChange={(e) => setTimeRange(e.target.value as TimeRange)} label="Time Range">
@@ -170,7 +194,7 @@ export default function ReportsPage() {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12} sm={4}>
+          <Grid item xs={6} sm={4}>
             <Button
               variant="contained"
               onClick={handleGenerate}
@@ -183,82 +207,104 @@ export default function ReportsPage() {
         </Grid>
       </Paper>
 
+      {/* Filters — collapsible on mobile */}
       {events.length > 0 && (
-        <Paper sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>Filter Results</Typography>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={2}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Event Type</InputLabel>
-                <Select value={filterEventType} onChange={(e) => { setFilterEventType(e.target.value); setPage(0); }} label="Event Type">
-                  <MenuItem value="">All</MenuItem>
-                  <ListSubheader>Token Events</ListSubheader>
-                  <MenuItem value="Deposit">Deposit</MenuItem>
-                  <MenuItem value="Transfer">Transfer to Member</MenuItem>
-                  <MenuItem value="TransferToParent">Transfer to Parent</MenuItem>
-                  <MenuItem value="Withdrawal">Withdrawal</MenuItem>
-                  <MenuItem value="TimeLockResolved">Time Lock Resolved</MenuItem>
-                  <ListSubheader>Member Events</ListSubheader>
-                  <MenuItem value="MemberAdded">Member Added</MenuItem>
-                  <MenuItem value="PAAssigned">PA Assigned</MenuItem>
-                  <MenuItem value="MemberRemoved">Member Removed</MenuItem>
-                  <MenuItem value="MemberClaimed">Member Claimed</MenuItem>
-                  <MenuItem value="WalletChanged">Wallet Changed</MenuItem>
-                  <MenuItem value="MemberIDUpdated">Member ID Updated</MenuItem>
-                  <MenuItem value="TypeChanged">Member Type Changed</MenuItem>
-                  <ListSubheader>Program / Admin</ListSubheader>
-                  <MenuItem value="ProgramCreated">Program Created</MenuItem>
-                  <MenuItem value="ProgramUpdated">Program Updated</MenuItem>
-                  <MenuItem value="ProgramDeactivated">Program Deactivated</MenuItem>
-                  <MenuItem value="LimitUpdated">Transfer Limit Updated</MenuItem>
-                  <MenuItem value="RewardTypeAdded">Reward Type Added</MenuItem>
-                  <MenuItem value="RewardTypeRemoved">Reward Type Removed</MenuItem>
-                  <MenuItem value="SubTypeAdded">Sub-Type Added</MenuItem>
-                  <MenuItem value="SubTypeRemoved">Sub-Type Removed</MenuItem>
-                </Select>
-              </FormControl>
+        <Accordion expanded={!isMobile || filtersExpanded} onChange={(_, expanded) => setFiltersExpanded(expanded)}
+          sx={{ mb: 2, "&:before": { display: "none" } }} elevation={1}>
+          <AccordionSummary
+            expandIcon={isMobile ? <ExpandMoreIcon /> : undefined}
+            sx={{ display: { sm: "none" }, minHeight: 48, "&.Mui-expanded": { minHeight: 48 } }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <FilterListIcon fontSize="small" />
+              <Typography variant="subtitle2">Filters</Typography>
+              {activeFilterCount > 0 && (
+                <Chip label={activeFilterCount} size="small" color="primary" sx={{ height: 20, fontSize: "0.75rem" }} />
+              )}
+            </Box>
+          </AccordionSummary>
+          <AccordionDetails sx={{ p: { xs: 1.5, sm: 3 }, pt: { sm: 2 } }}>
+            {!isMobile && <Typography variant="h6" gutterBottom>Filter Results</Typography>}
+            <Grid container spacing={1.5} alignItems="center">
+              <Grid item xs={12} sm={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Event Types</InputLabel>
+                  <Select
+                    multiple
+                    value={filterEventTypes}
+                    onChange={(e) => { setFilterEventTypes(e.target.value as string[]); setPage(0); }}
+                    label="Event Types"
+                    renderValue={(selected) => renderEventTypeValue(selected as string[])}
+                  >
+                    {EVENT_GROUPS.map(group => [
+                      <ListSubheader key={group.label}>{group.label}</ListSubheader>,
+                      ...group.types.map(type => (
+                        <MenuItem key={type} value={type} dense>
+                          <Checkbox checked={filterEventTypes.includes(type)} size="small" />
+                          <ListItemText primary={EVENT_LABELS[type]} primaryTypographyProps={{ variant: "body2" }} />
+                        </MenuItem>
+                      )),
+                    ])}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={6} sm={2}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Reward Type</InputLabel>
+                  <Select value={filterRewardType} onChange={(e) => { setFilterRewardType(e.target.value as number | ""); setPage(0); }} label="Reward Type">
+                    <MenuItem value="">All</MenuItem>
+                    {Object.entries(rewardTypeNames).map(([k, v]) => (
+                      <MenuItem key={k} value={Number(k)}>{v}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={6} sm={2}>
+                <TextField label="Wallet" value={filterWallet}
+                  onChange={(e) => { setFilterWallet(e.target.value); setPage(0); }}
+                  fullWidth size="small" placeholder="0x..." />
+              </Grid>
+              <Grid item xs={12} sm={2}>
+                <TextField label="Member ID" value={filterMemberID}
+                  onChange={(e) => { setFilterMemberID(e.target.value.toUpperCase().slice(0, 12)); setPage(0); }}
+                  fullWidth size="small" placeholder="e.g. ALICE01"
+                  inputProps={{ maxLength: 12 }}
+                  helperText={!resolvedProgramId ? "Set Program ID or Code" : filterMemberID && !resolvedMemberAddr ? "Not found" : ""} />
+              </Grid>
+              <Grid item xs={6} sm={1.5}>
+                <TextField label="Min Amt" value={filterAmountMin}
+                  onChange={(e) => { setFilterAmountMin(e.target.value); setPage(0); }}
+                  type="number" fullWidth size="small"
+                  InputProps={{ endAdornment: <InputAdornment position="end" sx={{ "& p": { fontSize: "0.75rem" } }}>FULA</InputAdornment> }} />
+              </Grid>
+              <Grid item xs={6} sm={1.5}>
+                <TextField label="Max Amt" value={filterAmountMax}
+                  onChange={(e) => { setFilterAmountMax(e.target.value); setPage(0); }}
+                  type="number" fullWidth size="small"
+                  InputProps={{ endAdornment: <InputAdornment position="end" sx={{ "& p": { fontSize: "0.75rem" } }}>FULA</InputAdornment> }} />
+              </Grid>
             </Grid>
-            <Grid item xs={12} sm={2}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Reward Type</InputLabel>
-                <Select value={filterRewardType} onChange={(e) => { setFilterRewardType(e.target.value as number | ""); setPage(0); }} label="Reward Type">
-                  <MenuItem value="">All</MenuItem>
-                  {Object.entries(rewardTypeNames).map(([k, v]) => (
-                    <MenuItem key={k} value={Number(k)}>{v}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={2}>
-              <TextField label="Wallet Address" value={filterWallet}
-                onChange={(e) => { setFilterWallet(e.target.value); setPage(0); }}
-                fullWidth size="small" placeholder="0x..." />
-            </Grid>
-            <Grid item xs={12} sm={2}>
-              <TextField label="Member ID" value={filterMemberID}
-                onChange={(e) => { setFilterMemberID(e.target.value.toUpperCase().slice(0, 12)); setPage(0); }}
-                fullWidth size="small" placeholder="e.g. ALICE01"
-                inputProps={{ maxLength: 12 }}
-                helperText={!resolvedProgramId ? "Set Program ID or Code" : filterMemberID && !resolvedMemberAddr ? "Not found" : ""} />
-            </Grid>
-            <Grid item xs={6} sm={2}>
-              <TextField label="Min Amount" value={filterAmountMin}
-                onChange={(e) => { setFilterAmountMin(e.target.value); setPage(0); }}
-                type="number" fullWidth size="small"
-                InputProps={{ endAdornment: <InputAdornment position="end">FULA</InputAdornment> }} />
-            </Grid>
-            <Grid item xs={6} sm={2}>
-              <TextField label="Max Amount" value={filterAmountMax}
-                onChange={(e) => { setFilterAmountMax(e.target.value); setPage(0); }}
-                type="number" fullWidth size="small"
-                InputProps={{ endAdornment: <InputAdornment position="end">FULA</InputAdornment> }} />
-            </Grid>
-          </Grid>
-        </Paper>
+            {activeFilterCount > 0 && (
+              <Box sx={{ mt: 1, display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                {filterEventTypes.map(t => (
+                  <Chip key={t} label={EVENT_LABELS[t]} size="small" color={EVENT_CHIP_COLOR[t] || "default"}
+                    onDelete={() => { setFilterEventTypes(prev => prev.filter(x => x !== t)); setPage(0); }} />
+                ))}
+                {activeFilterCount > 0 && (
+                  <Button size="small" onClick={() => {
+                    setFilterEventTypes([]); setFilterRewardType(""); setFilterWallet("");
+                    setFilterMemberID(""); setFilterAmountMin(""); setFilterAmountMax(""); setPage(0);
+                  }}>Clear All</Button>
+                )}
+              </Box>
+            )}
+          </AccordionDetails>
+        </Accordion>
       )}
 
+      {/* Loading */}
       {loading && (
-        <Paper sx={{ p: 2, mb: 3 }}>
+        <Paper sx={{ p: 2, mb: 2 }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
             <Typography variant="body2">Fetching events...</Typography>
             <Typography variant="body2" color="text.secondary">
@@ -269,94 +315,99 @@ export default function ReportsPage() {
         </Paper>
       )}
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {filteredEvents.length > 0 && (
         <>
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid item xs={6} sm={2.4}>
-              <Paper sx={{ p: 2, textAlign: "center" }}>
-                <Typography color="text.secondary" variant="body2">Deposits</Typography>
-                <Typography variant="h6" color="success.main">{formatFula(totalDeposits)}</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {filteredEvents.filter(e => e.type === "Deposit").length} txns
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={6} sm={2.4}>
-              <Paper sx={{ p: 2, textAlign: "center" }}>
-                <Typography color="text.secondary" variant="body2">Transfers</Typography>
-                <Typography variant="h6" color="info.main">{formatFula(totalTransfers)}</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {filteredEvents.filter(e => e.type === "Transfer" || e.type === "TransferToParent").length} txns
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={6} sm={2.4}>
-              <Paper sx={{ p: 2, textAlign: "center" }}>
-                <Typography color="text.secondary" variant="body2">Withdrawals</Typography>
-                <Typography variant="h6" color="warning.main">{formatFula(totalWithdrawals)}</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {filteredEvents.filter(e => e.type === "Withdrawal").length} txns
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={6} sm={2.4}>
-              <Paper sx={{ p: 2, textAlign: "center" }}>
-                <Typography color="text.secondary" variant="body2">Member Events</Typography>
-                <Typography variant="h6" color="secondary.main">{memberEventCount}</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  added / claimed / changed
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={2.4}>
-              <Paper sx={{ p: 2, textAlign: "center" }}>
-                <Typography color="text.secondary" variant="body2">Admin Events</Typography>
-                <Typography variant="h6" color="primary.main">{adminEventCount}</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  programs / types / limits
-                </Typography>
-              </Paper>
-            </Grid>
-          </Grid>
+          {/* Summary cards — horizontal scroll on mobile */}
+          <Box sx={{ mb: 2, overflowX: "auto", pb: 1 }}>
+            <Stack direction="row" spacing={1.5} sx={{ minWidth: { xs: 600, sm: "auto" } }}>
+              <Card sx={{ flex: 1, minWidth: 110 }}>
+                <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 }, textAlign: "center" }}>
+                  <Typography color="text.secondary" variant="caption">Deposits</Typography>
+                  <Typography variant="subtitle1" color="success.main" sx={{ fontWeight: 600 }}>{formatFula(totalDeposits)}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {filteredEvents.filter(e => e.type === "Deposit").length} txns
+                  </Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ flex: 1, minWidth: 110 }}>
+                <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 }, textAlign: "center" }}>
+                  <Typography color="text.secondary" variant="caption">Transfers</Typography>
+                  <Typography variant="subtitle1" color="info.main" sx={{ fontWeight: 600 }}>{formatFula(totalTransfers)}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {filteredEvents.filter(e => e.type === "Transfer" || e.type === "TransferToParent").length} txns
+                  </Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ flex: 1, minWidth: 110 }}>
+                <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 }, textAlign: "center" }}>
+                  <Typography color="text.secondary" variant="caption">Withdrawals</Typography>
+                  <Typography variant="subtitle1" color="warning.main" sx={{ fontWeight: 600 }}>{formatFula(totalWithdrawals)}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {filteredEvents.filter(e => e.type === "Withdrawal").length} txns
+                  </Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ flex: 1, minWidth: 110 }}>
+                <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 }, textAlign: "center" }}>
+                  <Typography color="text.secondary" variant="caption">Member</Typography>
+                  <Typography variant="subtitle1" color="secondary.main" sx={{ fontWeight: 600 }}>{memberEventCount}</Typography>
+                  <Typography variant="caption" color="text.secondary">events</Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ flex: 1, minWidth: 110 }}>
+                <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 }, textAlign: "center" }}>
+                  <Typography color="text.secondary" variant="caption">Admin</Typography>
+                  <Typography variant="subtitle1" color="primary.main" sx={{ fontWeight: 600 }}>{adminEventCount}</Typography>
+                  <Typography variant="caption" color="text.secondary">events</Typography>
+                </CardContent>
+              </Card>
+            </Stack>
+          </Box>
 
-          <TableContainer component={Paper}>
-            <Table size="small">
+          {/* Events table */}
+          <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
+            <Table size="small" sx={{ minWidth: { xs: 420, sm: 700 } }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Program</TableCell>
-                  <TableCell>Wallet</TableCell>
-                  <TableCell>Amount / Detail</TableCell>
-                  {!isMobile && <TableCell>Reward Type</TableCell>}
-                  {!isMobile && <TableCell>Note</TableCell>}
-                  {!isMobile && <TableCell>Block</TableCell>}
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>Type</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap", display: { xs: "none", md: "table-cell" } }}>Prog</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>Wallet</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>Amount / Detail</TableCell>
+                  {!isMobile && <TableCell sx={{ whiteSpace: "nowrap" }}>Reward Type</TableCell>}
+                  {!isMobile && <TableCell sx={{ whiteSpace: "nowrap" }}>Note</TableCell>}
+                  {!isMobile && <TableCell sx={{ whiteSpace: "nowrap" }}>Block</TableCell>}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {paginatedEvents.map((row, i) => (
                   <TableRow key={`${row.txHash}-${i}`} hover>
-                    <TableCell>
+                    <TableCell sx={{ py: 0.75 }}>
                       <Chip
-                        label={EVENT_LABELS[row.type] || row.type}
+                        label={isMobile ? (EVENT_LABELS[row.type] || row.type).split(" ")[0] : (EVENT_LABELS[row.type] || row.type)}
                         size="small"
                         color={EVENT_CHIP_COLOR[row.type] || "default"}
+                        sx={{ fontSize: { xs: "0.7rem", sm: "0.8125rem" }, height: { xs: 22, sm: 24 } }}
                       />
                     </TableCell>
-                    <TableCell>{row.programId}</TableCell>
-                    <TableCell sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}>
+                    <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>{row.programId}</TableCell>
+                    <TableCell sx={{ fontFamily: "monospace", fontSize: { xs: "0.75rem", sm: "0.85rem" } }}>
                       {row.wallet ? shortenAddress(row.wallet) : "-"}
                     </TableCell>
                     <TableCell>
-                      {TOKEN_EVENTS.has(row.type) && row.amount > BigInt(0)
-                        ? formatFula(row.amount)
-                        : ""}
-                      {row.detail && (
-                        <Typography variant="caption" color="text.secondary" component="div"
-                          sx={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {row.detail}
+                      {TOKEN_EVENTS.has(row.type) && row.amount > BigInt(0) && (
+                        <Typography variant="body2" sx={{ fontWeight: 500, fontSize: { xs: "0.8rem", sm: "0.875rem" } }}>
+                          {formatFula(row.amount)}
                         </Typography>
+                      )}
+                      {row.detail && (
+                        <Tooltip title={row.detail} arrow placement="top">
+                          <Typography variant="caption" color="text.secondary" component="div"
+                            sx={{ maxWidth: { xs: 140, sm: 220 }, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {row.detail}
+                          </Typography>
+                        </Tooltip>
                       )}
                     </TableCell>
                     {!isMobile && (
@@ -387,6 +438,10 @@ export default function ReportsPage() {
                 setPage(0);
               }}
               rowsPerPageOptions={[10, 25, 50, 100]}
+              sx={{
+                "& .MuiTablePagination-toolbar": { flexWrap: "wrap", justifyContent: { xs: "center", sm: "flex-end" } },
+                "& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows": { fontSize: { xs: "0.75rem", sm: "0.875rem" } },
+              }}
             />
           </TableContainer>
         </>

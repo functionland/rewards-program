@@ -27,7 +27,7 @@ import { QRScannerButton } from "@/components/common/QRScannerButton";
 
 /* -- Per-program membership row -- */
 
-function MemberProgramRow({ memberID, programId }: { memberID: string; programId: number }) {
+function MemberProgramCard({ memberID, programId, isMobile }: { memberID: string; programId: number; isMobile: boolean }) {
   const memberIDBytes = toBytes12(memberID);
 
   const { data: member } = useReadContract({
@@ -57,10 +57,55 @@ function MemberProgramRow({ memberID, programId }: { memberID: string; programId
 
   if (!member || !member.active) return null;
 
+  const programName = program ? program.name : `Program #${programId}`;
+  const programCode = program ? fromBytes8(program.code as `0x${string}`) : "";
+
+  if (isMobile) {
+    return (
+      <Paper sx={{ p: 2, mb: 1.5 }} variant="outlined">
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+          <Box>
+            <Typography variant="subtitle2">{programName}</Typography>
+            {programCode && <Typography variant="caption" color="text.secondary">{programCode} (P{programId})</Typography>}
+          </Box>
+          <Box sx={{ display: "flex", gap: 0.5 }}>
+            <Chip label={MemberRoleLabels[Number(member.role)] || "Unknown"} size="small"
+              color={Number(member.role) === 3 ? "primary" : Number(member.role) === 2 ? "secondary" : "default"} />
+            <Chip label={MemberTypeLabels[Number(member.memberType)] || "Free"} size="small" variant="outlined" />
+          </Box>
+        </Box>
+        <Box sx={{ display: "flex", gap: 2, mb: 1 }}>
+          <Box sx={{ flex: 1, textAlign: "center" }}>
+            <Typography variant="caption" color="text.secondary" display="block">Available</Typography>
+            <Typography variant="body2" sx={{ color: "success.main", fontWeight: 600 }}>
+              {balance ? formatFula(balance[0]) : "-"}
+            </Typography>
+          </Box>
+          <Box sx={{ flex: 1, textAlign: "center" }}>
+            <Typography variant="caption" color="text.secondary" display="block">Locked</Typography>
+            <Typography variant="body2" sx={{ color: "error.main", fontWeight: 600 }}>
+              {balance ? formatFula(balance[1]) : "-"}
+            </Typography>
+          </Box>
+          <Box sx={{ flex: 1, textAlign: "center" }}>
+            <Typography variant="caption" color="text.secondary" display="block">Time-Locked</Typography>
+            <Typography variant="body2" sx={{ color: "warning.main", fontWeight: 600 }}>
+              {balance ? formatFula(balance[2]) : "-"}
+            </Typography>
+          </Box>
+        </Box>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Typography variant="caption" color="text.secondary">Parent: {shortenAddress(member.parent)}</Typography>
+          <QRCodeDisplay programId={programId} memberID={memberID} size={80} />
+        </Box>
+      </Paper>
+    );
+  }
+
   return (
     <TableRow>
-      <TableCell>{program ? program.name : `Program #${programId}`}</TableCell>
-      <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>{program ? fromBytes8(program.code as `0x${string}`) : "-"}</TableCell>
+      <TableCell>{programName}</TableCell>
+      <TableCell>{programCode || "-"}</TableCell>
       <TableCell>
         <Chip label={MemberRoleLabels[Number(member.role)] || "Unknown"} size="small"
           color={Number(member.role) === 3 ? "primary" : Number(member.role) === 2 ? "secondary" : "default"} />
@@ -70,8 +115,8 @@ function MemberProgramRow({ memberID, programId }: { memberID: string; programId
       </TableCell>
       <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>{shortenAddress(member.parent)}</TableCell>
       <TableCell sx={{ color: "success.main" }}>{balance ? formatFula(balance[0]) : "-"}</TableCell>
-      <TableCell sx={{ color: "error.main", display: { xs: "none", sm: "table-cell" } }}>{balance ? formatFula(balance[1]) : "-"}</TableCell>
-      <TableCell sx={{ color: "warning.main", display: { xs: "none", sm: "table-cell" } }}>{balance ? formatFula(balance[2]) : "-"}</TableCell>
+      <TableCell sx={{ color: "error.main" }}>{balance ? formatFula(balance[1]) : "-"}</TableCell>
+      <TableCell sx={{ color: "warning.main" }}>{balance ? formatFula(balance[2]) : "-"}</TableCell>
       <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>{member.active ? "Active" : "Inactive"}</TableCell>
       <TableCell>
         <QRCodeDisplay programId={programId} memberID={memberID} size={120} />
@@ -397,33 +442,48 @@ function BalanceContent() {
           {memberExists && (
             <>
               <Paper sx={{ p: 2, mt: 2 }}>
-                <Typography variant="h6" gutterBottom>Programs & Balances for &quot;{searchID}&quot;</Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
-                  Balance columns: Available / Permanently Locked / Time-Locked (FULA)
+                <Typography variant="h6" gutterBottom sx={{ fontSize: { xs: "1rem", sm: "1.25rem" } }}>
+                  Programs & Balances for &quot;{searchID}&quot;
                 </Typography>
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Program</TableCell>
-                        <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>Code</TableCell>
-                        <TableCell>Role</TableCell>
-                        <TableCell>Type</TableCell>
-                        <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>Parent</TableCell>
-                        <TableCell>Available</TableCell>
-                        <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>Locked</TableCell>
-                        <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>Time-Locked</TableCell>
-                        <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>Status</TableCell>
-                        <TableCell>QR</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {Array.from({ length: count }, (_, i) => (
-                        <MemberProgramRow key={i + 1} memberID={searchID} programId={i + 1} />
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
+                  Balance: Available / Permanently Locked / Time-Locked (FULA)
+                </Typography>
+
+                {/* Mobile: card layout */}
+                {isMobile && (
+                  <Box>
+                    {Array.from({ length: count }, (_, i) => (
+                      <MemberProgramCard key={i + 1} memberID={searchID} programId={i + 1} isMobile />
+                    ))}
+                  </Box>
+                )}
+
+                {/* Desktop: table layout */}
+                {!isMobile && (
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Program</TableCell>
+                          <TableCell>Code</TableCell>
+                          <TableCell>Role</TableCell>
+                          <TableCell>Type</TableCell>
+                          <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>Parent</TableCell>
+                          <TableCell>Available</TableCell>
+                          <TableCell>Locked</TableCell>
+                          <TableCell>Time-Locked</TableCell>
+                          <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>Status</TableCell>
+                          <TableCell>QR</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {Array.from({ length: count }, (_, i) => (
+                          <MemberProgramCard key={i + 1} memberID={searchID} programId={i + 1} isMobile={false} />
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
               </Paper>
 
               {memberWallet && <OwnerActions memberWallet={memberWallet} initialProgramId={claimedProgramId ?? undefined} />}
