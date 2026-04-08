@@ -11,7 +11,7 @@ import {
 import { parseUnits } from "viem";
 import { useReadContract } from "wagmi";
 import { CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
-import { useRewardTypes } from "@/hooks/useRewardsProgram";
+import { useRewardTypes, useProgramCodeToId } from "@/hooks/useRewardsProgram";
 import { useChunkedEventLogs, type TimeRange } from "@/hooks/useChunkedEventLogs";
 import { formatFula, shortenAddress, fromBytes16, toBytes12 } from "@/lib/utils";
 
@@ -19,7 +19,10 @@ export default function ReportsPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [filterProgramId, setFilterProgramId] = useState("");
-  const { data: rewardTypesData } = useRewardTypes(Number(filterProgramId) || 0);
+  const [filterProgramCode, setFilterProgramCode] = useState("");
+  const { data: programIdFromCode } = useProgramCodeToId(filterProgramCode);
+  const resolvedProgramId = filterProgramId ? Number(filterProgramId) : (programIdFromCode ? Number(programIdFromCode) : 0);
+  const { data: rewardTypesData } = useRewardTypes(resolvedProgramId);
   const [timeRange, setTimeRange] = useState<TimeRange>("7d");
   const [trigger, setTrigger] = useState(0);
   const [page, setPage] = useState(0);
@@ -39,8 +42,8 @@ export default function ReportsPage() {
     address: CONTRACTS.rewardsProgram,
     abi: REWARDS_PROGRAM_ABI,
     functionName: "memberIDLookup",
-    args: filterMemberIDBytes && filterProgramId ? [filterMemberIDBytes, Number(filterProgramId)] : undefined,
-    query: { enabled: !!filterMemberIDBytes && !!filterProgramId },
+    args: filterMemberIDBytes && resolvedProgramId ? [filterMemberIDBytes, resolvedProgramId] : undefined,
+    query: { enabled: !!filterMemberIDBytes && resolvedProgramId > 0 },
   });
   const resolvedMemberAddr = filterMemberKey && filterMemberKey !== "0x0000000000000000000000000000000000000000" ? (filterMemberKey as string).toLowerCase() : "";
 
@@ -48,7 +51,7 @@ export default function ReportsPage() {
     events, loading, progress, totalChunks, completedChunks, error, cancel,
   } = useChunkedEventLogs({
     address: CONTRACTS.rewardsProgram,
-    programId: filterProgramId ? Number(filterProgramId) : undefined,
+    programId: resolvedProgramId || undefined,
     timeRange,
     trigger,
   });
@@ -59,7 +62,7 @@ export default function ReportsPage() {
     filteredEvents = filteredEvents.filter(e => e.type === filterEventType);
   }
   if (filterRewardType !== "") {
-    filteredEvents = filteredEvents.filter(r => r.type !== "Deposit" || r.rewardType === filterRewardType);
+    filteredEvents = filteredEvents.filter(r => r.rewardType === undefined || r.rewardType === filterRewardType);
   }
   if (filterWallet) {
     const w = filterWallet.toLowerCase();
@@ -117,10 +120,17 @@ export default function ReportsPage() {
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>Fetch Settings</Typography>
         <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={4}>
+          <Grid item xs={6} sm={2}>
             <TextField label="Program ID" value={filterProgramId}
-              onChange={(e) => setFilterProgramId(e.target.value)}
-              type="number" fullWidth size="small" placeholder="All programs" />
+              onChange={(e) => { setFilterProgramId(e.target.value); if (e.target.value) setFilterProgramCode(""); }}
+              type="number" fullWidth size="small" placeholder="All" />
+          </Grid>
+          <Grid item xs={6} sm={2}>
+            <TextField label="Program Code" value={filterProgramCode}
+              onChange={(e) => { setFilterProgramCode(e.target.value.toUpperCase()); if (e.target.value) setFilterProgramId(""); }}
+              fullWidth size="small" placeholder="e.g. Z8X"
+              inputProps={{ maxLength: 8 }}
+              helperText={filterProgramCode && !resolvedProgramId ? "Not found" : filterProgramCode && resolvedProgramId ? `ID: ${resolvedProgramId}` : ""} />
           </Grid>
           <Grid item xs={12} sm={4}>
             <FormControl fullWidth size="small">
@@ -183,7 +193,7 @@ export default function ReportsPage() {
                 onChange={(e) => { setFilterMemberID(e.target.value.toUpperCase().slice(0, 12)); setPage(0); }}
                 fullWidth size="small" placeholder="e.g. ALICE01"
                 inputProps={{ maxLength: 12 }}
-                helperText={!filterProgramId ? "Set Program ID" : filterMemberID && !resolvedMemberAddr ? "Not found" : ""} />
+                helperText={!resolvedProgramId ? "Set Program ID or Code" : filterMemberID && !resolvedMemberAddr ? "Not found" : ""} />
             </Grid>
             <Grid item xs={6} sm={2}>
               <TextField label="Min Amount" value={filterAmountMin}
