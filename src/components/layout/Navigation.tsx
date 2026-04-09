@@ -1,12 +1,13 @@
 "use client";
 
-import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Toolbar, Typography, Box, useMediaQuery, useTheme } from "@mui/material";
+import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Toolbar, Typography, Box, Divider, useMediaQuery, useTheme } from "@mui/material";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import GroupWorkIcon from "@mui/icons-material/GroupWork";
 import PeopleIcon from "@mui/icons-material/People";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import AssessmentIcon from "@mui/icons-material/Assessment";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
@@ -57,6 +58,21 @@ export function Navigation({ mobileOpen, onClose }: { mobileOpen: boolean; onClo
           </ListItem>
         ))}
       </List>
+      <Box sx={{ flexGrow: 1 }} />
+      <Divider />
+      <List>
+        <ListItem disablePadding>
+          <ListItemButton
+            component={Link}
+            href="/help"
+            selected={pathname === "/help"}
+            onClick={isMobile ? onClose : undefined}
+          >
+            <ListItemIcon><HelpOutlineIcon /></ListItemIcon>
+            <ListItemText primary="Help" />
+          </ListItemButton>
+        </ListItem>
+      </List>
     </>
   );
 
@@ -74,6 +90,8 @@ export function Navigation({ mobileOpen, onClose }: { mobileOpen: boolean; onClo
             width: DRAWER_WIDTH,
             boxSizing: "border-box",
             bgcolor: "background.paper",
+            display: "flex",
+            flexDirection: "column",
           },
         }}
       >
@@ -91,6 +109,8 @@ export function Navigation({ mobileOpen, onClose }: { mobileOpen: boolean; onClo
             width: DRAWER_WIDTH,
             boxSizing: "border-box",
             bgcolor: "background.paper",
+            display: "flex",
+            flexDirection: "column",
           },
         }}
       >
