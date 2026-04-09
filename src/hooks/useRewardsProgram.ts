@@ -524,6 +524,32 @@ export function useRemoveSubType() {
   return { removeSubType, isPending, isConfirming, isSuccess, error, hash };
 }
 
+export function useActForMember() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const actForMember = (
+    programId: number,
+    memberID: string,
+    action: number,
+    to: `0x${string}`,
+    amount: string,
+    note: string = ""
+  ) => {
+    const parsed = safeParseAmount(amount);
+    if (!parsed) return;
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "actForMember",
+      args: [programId, toBytes12(memberID), action, to, parsed, false, 0, 0, note],
+    });
+  };
+
+  return { actForMember, isPending, isConfirming, isSuccess, error, hash };
+}
+
 export function useUpdateMemberID() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });

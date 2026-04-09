@@ -42,7 +42,8 @@
       "Bash(ls /mnt/e/GitHub/rewards-program/src/app/error*)",
       "Read(//mnt/e/GitHub/fula-chain/**)",
       "Read(//mnt/e/GitHub/**)",
-      "Bash(HARDHAT_CONTRACT_SIZER=false npx hardhat test test/governance/integration/RewardsProgram.test.ts --no-compile)"
+      "Bash(HARDHAT_CONTRACT_SIZER=false npx hardhat test test/governance/integration/RewardsProgram.test.ts --no-compile)",
+      "Bash(wc:*)"
     ]
   }
 }

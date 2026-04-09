@@ -20,6 +20,7 @@ function virtualAddr(memberID: string, programId: number): `0x${string}` {
   // Take last 20 bytes (address = uint160 of uint256)
   return getAddress("0x" + hash.slice(-40)) as `0x${string}`;
 }
+import { QRCodeSVG } from "qrcode.react";
 import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useDepositTokens, useRewardTypes, useTransferLimit, useClaimMember } from "@/hooks/useRewardsProgram";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
@@ -398,9 +399,30 @@ function BalanceContent() {
     setSearchID(m);
   };
 
+  const [redeemQrUrl, setRedeemQrUrl] = useState("");
+  useEffect(() => {
+    if (typeof window !== "undefined" && searchID && codeParam && claimParam && memberExists) {
+      setRedeemQrUrl(`${window.location.origin}/redeem?member=${encodeURIComponent(searchID)}&claim=${encodeURIComponent(claimParam)}&code=${encodeURIComponent(codeParam)}`);
+    } else {
+      setRedeemQrUrl("");
+    }
+  }, [searchID, codeParam, claimParam, memberExists]);
+
   return (
     <Box>
       <Typography variant="h4" gutterBottom>Member Balance</Typography>
+
+      {redeemQrUrl && (
+        <Paper sx={{ p: 2, mb: 3, textAlign: "center" }}>
+          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+            Scan to redeem rewards
+          </Typography>
+          <QRCodeSVG value={redeemQrUrl} size={isMobile ? 160 : 200} level="M" />
+          <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
+            {searchID} &middot; Program {claimParam}
+          </Typography>
+        </Paper>
+      )}
 
       <Paper sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: "flex", gap: 2, alignItems: "flex-end", flexWrap: "wrap" }}>
