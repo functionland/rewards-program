@@ -421,6 +421,16 @@ function BalanceContent() {
           <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
             {searchID} &middot; Program {claimParam}
           </Typography>
+          <Typography
+            component="a"
+            href={redeemQrUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="caption"
+            sx={{ mt: 0.5, display: "inline-block", color: "primary.main", wordBreak: "break-all", textDecoration: "underline", cursor: "pointer" }}
+          >
+            {redeemQrUrl}
+          </Typography>
         </Paper>
       )}
 
