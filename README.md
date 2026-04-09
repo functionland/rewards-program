@@ -236,13 +236,22 @@ If the connected wallet matches the member's wallet, action panels appear for de
 
 Shareable link format: `/balance?member=MEMBER_ID`
 
+### Redeem (`/redeem`)
+Streamlined redemption interface for merchants and store operators:
+- Member's QR code is scanned (or member ID entered manually)
+- Shows member balance and parent info
+- Merchant connects their wallet and enters an amount to redeem
+- Executes a "Transfer to Parent" on behalf of the member — no member wallet needed
+- URL format: `/redeem?member=MEMBER_ID&claim=PROGRAM_ID&code=EDIT_CODE`
+
 ### Reports (`/reports`)
 Reporting page for transaction intelligence. Features:
-- **Filters**: Program ID, Member Type, Reward Type
-- **Summary cards**: Total deposits, transfers, and withdrawals (FULA amounts + transaction counts)
-- **Detail table**: Type (color-coded), Program, Wallet, Amount, Reward Type, Note, Block number
-- Data sourced from on-chain events — no backend required
-- Sorted by most recent first, showing up to 100 events
+- **Filters**: Program ID/Code, time range, event types, reward type, wallet, member ID, amount range
+- **Summary cards**: Total deposits, transfers, withdrawals, member events, and admin events
+- **Detail table**: Type (color-coded), Program, Wallet, Amount, Reward Type, Note, timestamp
+- **Leaderboard**: Top depositors with accumulated rewards, filterable by reward type
+- Data sourced from The Graph subgraph (primary) with IndexedDB caching and eth_getLogs fallback
+- Sorted by most recent first
 
 ## On-Chain Data Notice
 
@@ -290,6 +299,8 @@ The portal interacts with two contracts that share a single proxy address:
 - **Wagmi 2.x** + **Viem 2.x** — contract interaction
 - **TanStack React Query** — data fetching and caching
 - **Material UI 6.x** — component library (dark theme)
+- **The Graph** — pre-indexed event queries via custom subgraph (reports)
+- **IndexedDB** — client-side event cache for offline-first reports
 
 ## Project Structure
 
@@ -302,6 +313,7 @@ src/
 |   +-- balance/page.tsx    Public member balance lookup + owner actions
 |   +-- members/page.tsx    Member search with type display
 |   +-- programs/page.tsx   Program list + detail with member type management
+|   +-- redeem/page.tsx     Merchant redemption via QR scan
 |   +-- reports/page.tsx    Reports with filters and transaction history
 |   +-- tokens/page.tsx     Token operations (deposit with reward type/note, transfer, withdraw)
 +-- components/
@@ -311,16 +323,25 @@ src/
 |   |   +-- QRScannerButton.tsx     QR code scanner for member lookups
 |   +-- layout/
 |       +-- Header.tsx      AppBar with wallet connect + role chip
-|       +-- Navigation.tsx  Sidebar navigation (Dashboard, Programs, Members, Tokens, Balance, Reports)
+|       +-- Navigation.tsx  Sidebar navigation
 +-- config/
 |   +-- chains.ts           Supported chains (Base, Base Sepolia, Hardhat)
 |   +-- contracts.ts        Contract addresses, ABIs, role/type enums and labels
 +-- hooks/
-|   +-- useRewardsProgram.ts  Contract read/write hooks (members, tokens, types, sub-types)
-|   +-- useUserRole.ts       Role detection hooks
+|   +-- useRewardsProgram.ts       Contract read/write hooks
+|   +-- useUserRole.ts             Role detection hooks
+|   +-- useChunkedEventLogs.ts     Event fetching with gap-based routing
 +-- lib/
-    +-- utils.ts            Formatting utilities (bytes conversion, FULA formatting, error mapping)
+    +-- eventCache.ts       IndexedDB event cache (offline-first reports)
+    +-- subgraphApi.ts      The Graph subgraph client (pre-indexed events)
+    +-- utils.ts            Formatting utilities
     +-- wagmi.ts            Wagmi configuration
+subgraph/
++-- schema.graphql          ContractEvent entity definition
++-- subgraph.yaml           Manifest with 20 event handlers
++-- src/mapping.ts          AssemblyScript event handlers
++-- abis/RewardsProgram.json  Events-only ABI
++-- package.json            graph-cli + graph-ts dependencies
 ```
 
 ## Setup
@@ -349,7 +370,12 @@ npm run build
 | `NEXT_PUBLIC_STAKING_POOL_ADDRESS` | Deployed StakingPool contract address |
 | `NEXT_PUBLIC_FULA_TOKEN_ADDRESS` | FULA token address (defaults to Base mainnet) |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | WalletConnect project ID for wallet connections |
-| `NEXT_PUBLIC_CHAIN` | Target chain: `base`, `baseSepolia`, or `hardhat` |
+| `NEXT_PUBLIC_DEFAULT_CHAIN` | Target chain: `base`, `baseSepolia`, or `hardhat` |
+| `NEXT_PUBLIC_DEPLOYMENT_BLOCK` | Contract deployment block (avoids scanning empty blocks) |
+| `NEXT_PUBLIC_GRAPH_API_KEY` | The Graph gateway API key (domain-restricted, for production) |
+| `NEXT_PUBLIC_SUBGRAPH_ID` | Published subgraph ID on The Graph decentralized network |
+| `NEXT_PUBLIC_SUBGRAPH_ENDPOINT` | Direct subgraph URL (Studio dev endpoint, overrides API key + ID) |
+| `NEXT_PUBLIC_BLOCK_GAP_THRESHOLD` | Block gap above which The Graph is used instead of eth_getLogs (default: 39996) |
 
 ## Deployment
 
@@ -369,6 +395,32 @@ npm run build
 npx serve out
 ```
 
+## Reports Data Strategy
+
+The Reports page uses a three-tier data fetching strategy to minimize API usage while keeping data fresh:
+
+| Scenario | Data Source | Graph API calls |
+|----------|-------------|-----------------|
+| Cached + small gap (< ~22h) | IndexedDB + eth_getLogs delta | **0** |
+| Cached + large gap (> ~22h) | The Graph delta + eth_getLogs for indexing lag | **ceil(events/1000)** |
+| Cold start (no cache) | The Graph full bootstrap | **~5-50 one-time** |
+| No IndexedDB (private browsing) | The Graph per-search | **per search** |
+
+After the initial bootstrap, most visits use zero Graph API calls. The gap threshold is configurable via `NEXT_PUBLIC_BLOCK_GAP_THRESHOLD`.
+
+### Subgraph
+
+The `subgraph/` directory contains the custom subgraph deployed to The Graph's decentralized network. It indexes all 20 contract events into a single `ContractEvent` entity for efficient GraphQL queries.
+
+To rebuild and redeploy the subgraph:
+```bash
+cd subgraph
+npm install
+npx graph codegen && npx graph build
+npx graph auth <DEPLOY_KEY>
+npx graph deploy <SLUG>
+```
+
 ## Security Considerations
 
 - All contract interactions require wallet signing — no private keys are stored
@@ -376,3 +428,4 @@ npx serve out
 - On-chain data disclaimer required before any write transaction
 - No personal or protected information should be entered — all data is publicly visible on the blockchain
 - The contract enforces role-based access control — the portal's UI restrictions are convenience, not security
+- The Graph API key supports domain restriction via Subgraph Studio — configure this for production deployments
