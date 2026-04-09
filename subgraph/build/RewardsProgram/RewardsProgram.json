@@ -1,0 +1,507 @@
+[
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "depositId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "wallet",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "name": "rewardType",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "name": "note",
+        "type": "string"
+      }
+    ],
+    "name": "TokensDeposited",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "name": "locked",
+        "type": "bool"
+      },
+      {
+        "indexed": false,
+        "name": "lockTimeDays",
+        "type": "uint32"
+      },
+      {
+        "indexed": false,
+        "name": "rewardType",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "name": "subTypeId",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "name": "note",
+        "type": "string"
+      }
+    ],
+    "name": "TokensTransferredToMember",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "name": "note",
+        "type": "string"
+      }
+    ],
+    "name": "TokensTransferredToParent",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "wallet",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "TokensWithdrawn",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "wallet",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "TimeLockResolved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "wallet",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "name": "parent",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "role",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "name": "memberType",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "name": "memberID",
+        "type": "bytes12"
+      }
+    ],
+    "name": "MemberAdded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "wallet",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "memberID",
+        "type": "bytes12"
+      }
+    ],
+    "name": "ProgramAdminAssigned",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "wallet",
+        "type": "address"
+      }
+    ],
+    "name": "MemberRemoved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "memberKey",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "name": "wallet",
+        "type": "address"
+      }
+    ],
+    "name": "MemberClaimed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "memberKey",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "oldWallet",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "newWallet",
+        "type": "address"
+      }
+    ],
+    "name": "MemberWalletChanged",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "wallet",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "oldMemberID",
+        "type": "bytes12"
+      },
+      {
+        "indexed": false,
+        "name": "newMemberID",
+        "type": "bytes12"
+      }
+    ],
+    "name": "MemberIDUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "memberKey",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "oldType",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "name": "newType",
+        "type": "uint8"
+      }
+    ],
+    "name": "MemberTypeChanged",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": false,
+        "name": "code",
+        "type": "bytes8"
+      },
+      {
+        "indexed": false,
+        "name": "name",
+        "type": "string"
+      }
+    ],
+    "name": "ProgramCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": false,
+        "name": "name",
+        "type": "string"
+      }
+    ],
+    "name": "ProgramUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      }
+    ],
+    "name": "ProgramDeactivated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": false,
+        "name": "oldLimit",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "name": "newLimit",
+        "type": "uint8"
+      }
+    ],
+    "name": "TransferLimitUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "typeId",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "name": "name",
+        "type": "bytes16"
+      }
+    ],
+    "name": "RewardTypeAdded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "typeId",
+        "type": "uint8"
+      }
+    ],
+    "name": "RewardTypeRemoved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "rewardType",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "name": "subTypeId",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "name": "name",
+        "type": "bytes16"
+      }
+    ],
+    "name": "SubTypeAdded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "programId",
+        "type": "uint32"
+      },
+      {
+        "indexed": true,
+        "name": "rewardType",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "name": "subTypeId",
+        "type": "uint8"
+      }
+    ],
+    "name": "SubTypeRemoved",
+    "type": "event"
+  }
+]

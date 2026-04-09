@@ -115,6 +115,20 @@ export function shortenAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
+export function parseCID(input: string): string {
+  const s = input.trim();
+  // Extract CID from gateway URLs like https://ipfs.cloud.fx.land/gateway/bafk... or https://ipfs.io/ipfs/bafk...
+  const match = s.match(/\/(?:gateway|ipfs)\/(baf[a-z0-9]+)/i);
+  if (match) return match[1];
+  // Already a bare CID
+  return s;
+}
+
+export function ipfsLogoUrl(cid: string): string {
+  if (!cid) return "";
+  return `https://ipfs.cloud.fx.land/gateway/${cid}`;
+}
+
 export function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleDateString("en-US", {
     year: "numeric",

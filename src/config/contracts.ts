@@ -60,6 +60,23 @@ export const REWARDS_PROGRAM_ABI = [
     }],
   },
   {
+    name: "getProgramLogo",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "programId", type: "uint32" }],
+    outputs: [{ name: "", type: "string" }],
+  },
+  {
+    name: "setProgramLogo",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "programId", type: "uint32" },
+      { name: "logoCID", type: "string" },
+    ],
+    outputs: [],
+  },
+  {
     name: "programCount",
     type: "function",
     stateMutability: "view",

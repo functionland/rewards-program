@@ -1,0 +1,24 @@
+{
+  "name": "rewards-program-subgraph",
+  "version": "0.1.0",
+  "scripts": {
+    "codegen": "graph codegen",
+    "build": "graph build",
+    "deploy": "graph deploy rewards-program-subgraph"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "^0.98.1",
+    "@graphprotocol/graph-ts": "^0.36.0"
+  },
+  "overrides": {
+    "axios": "^1.15.0",
+    "cross-spawn": "^7.0.6",
+    "ejs": "^5.0.1",
+    "glob": "^11.1.0",
+    "immutable": "^5.1.5",
+    "js-yaml": "^4.1.1",
+    "semver": "^7.7.4",
+    "undici": "^8.0.2",
+    "yaml": "^2.8.3"
+  }
+}

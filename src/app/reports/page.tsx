@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Typography, Box, Paper, Grid, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, TextField, Button,
@@ -12,6 +12,8 @@ import {
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FilterListIcon from "@mui/icons-material/FilterList";
+import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
+import CachedIcon from "@mui/icons-material/Cached";
 import { parseUnits } from "viem";
 import { useReadContract } from "wagmi";
 import { CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
@@ -72,6 +74,7 @@ export default function ReportsPage() {
   const [filterMemberID, setFilterMemberID] = useState("");
   const [filterAmountMin, setFilterAmountMin] = useState("");
   const [filterAmountMax, setFilterAmountMax] = useState("");
+  const [leaderboardTop, setLeaderboardTop] = useState<number>(0);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
   // Resolve member ID -> storage key for filtering
@@ -87,6 +90,7 @@ export default function ReportsPage() {
 
   const {
     events, loading, progress, totalChunks, completedChunks, error, cancel,
+    cacheStatus, clearEventCache,
   } = useChunkedEventLogs({
     address: CONTRACTS.rewardsProgram,
     programId: resolvedProgramId || undefined,
@@ -138,6 +142,52 @@ export default function ReportsPage() {
     });
   }
 
+  // Leaderboard computation
+  const leaderboardData = useMemo(() => {
+    if (leaderboardTop === 0 || events.length === 0) return [];
+
+    // Map wallet → member code and earliest join timestamp
+    const walletToCode: Record<string, string> = {};
+    const walletJoinTimestamp: Record<string, number> = {};
+    for (const e of events) {
+      if (e.type === "MemberAdded" || e.type === "PAAssigned") {
+        const w = e.wallet.toLowerCase();
+        const match = e.detail?.match(/ID:\s*(\S+)/);
+        if (match && !walletToCode[w]) walletToCode[w] = match[1];
+        if (!walletJoinTimestamp[w] || (e.timestamp > 0 && e.timestamp < walletJoinTimestamp[w])) {
+          walletJoinTimestamp[w] = e.timestamp;
+        }
+      }
+    }
+
+    // Aggregate deposits (apply reward type filter only)
+    let deposits = events.filter(e => e.type === "Deposit");
+    if (filterRewardType !== "") {
+      deposits = deposits.filter(e => e.rewardType === filterRewardType);
+    }
+    const totals: Record<string, bigint> = {};
+    for (const e of deposits) {
+      const w = e.wallet.toLowerCase();
+      totals[w] = (totals[w] || BigInt(0)) + e.amount;
+    }
+
+    // Sort descending, take top N
+    return Object.entries(totals)
+      .sort(([, a], [, b]) => (b > a ? 1 : b < a ? -1 : 0))
+      .slice(0, leaderboardTop)
+      .map(([wallet, total], idx) => ({
+        rank: idx + 1,
+        memberCode: walletToCode[wallet] || shortenAddress(wallet),
+        joinTimestamp: walletJoinTimestamp[wallet] || 0,
+        total,
+      }));
+  }, [events, leaderboardTop, filterRewardType]);
+
+  const formatTimestamp = (ts: number): string => {
+    if (!ts) return "-";
+    return new Date(ts * 1000).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  };
+
   const handleGenerate = () => {
     if (loading) {
       cancel();
@@ -148,7 +198,8 @@ export default function ReportsPage() {
   };
 
   const activeFilterCount = (filterEventTypes.length > 0 ? 1 : 0) + (filterRewardType !== "" ? 1 : 0)
-    + (filterWallet ? 1 : 0) + (filterMemberID ? 1 : 0) + (filterAmountMin ? 1 : 0) + (filterAmountMax ? 1 : 0);
+    + (filterWallet ? 1 : 0) + (filterMemberID ? 1 : 0) + (filterAmountMin ? 1 : 0) + (filterAmountMax ? 1 : 0)
+    + (leaderboardTop > 0 ? 1 : 0);
 
   const safePage = page * rowsPerPage >= filteredEvents.length && filteredEvents.length > 0 ? 0 : page;
   const paginatedEvents = filteredEvents.slice(
@@ -195,14 +246,21 @@ export default function ReportsPage() {
             </FormControl>
           </Grid>
           <Grid item xs={6} sm={4}>
-            <Button
-              variant="contained"
-              onClick={handleGenerate}
-              fullWidth
-              color={loading ? "error" : "primary"}
-            >
-              {loading ? "Cancel" : "Generate Report"}
-            </Button>
+            <Box sx={{ display: "flex", gap: 1 }}>
+              <Button
+                variant="contained"
+                onClick={handleGenerate}
+                fullWidth
+                color={loading ? "error" : "primary"}
+              >
+                {loading ? "Cancel" : "Generate Report"}
+              </Button>
+              <Tooltip title="Clear cached events (forces full re-scan)">
+                <IconButton size="small" onClick={clearEventCache} disabled={loading}>
+                  <CachedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
           </Grid>
         </Grid>
       </Paper>
@@ -260,6 +318,17 @@ export default function ReportsPage() {
                 </FormControl>
               </Grid>
               <Grid item xs={6} sm={2}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Leaderboard</InputLabel>
+                  <Select value={leaderboardTop} onChange={(e) => { setLeaderboardTop(Number(e.target.value)); setPage(0); }} label="Leaderboard">
+                    <MenuItem value={0}>Off</MenuItem>
+                    <MenuItem value={10}>Top 10</MenuItem>
+                    <MenuItem value={20}>Top 20</MenuItem>
+                    <MenuItem value={50}>Top 50</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={6} sm={2}>
                 <TextField label="Wallet" value={filterWallet}
                   onChange={(e) => { setFilterWallet(e.target.value); setPage(0); }}
                   fullWidth size="small" placeholder="0x..." />
@@ -286,6 +355,10 @@ export default function ReportsPage() {
             </Grid>
             {activeFilterCount > 0 && (
               <Box sx={{ mt: 1, display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                {leaderboardTop > 0 && (
+                  <Chip icon={<EmojiEventsIcon sx={{ fontSize: 16 }} />} label={`Top ${leaderboardTop}`} size="small" color="warning"
+                    onDelete={() => { setLeaderboardTop(0); setPage(0); }} />
+                )}
                 {filterEventTypes.map(t => (
                   <Chip key={t} label={EVENT_LABELS[t]} size="small" color={EVENT_CHIP_COLOR[t] || "default"}
                     onDelete={() => { setFilterEventTypes(prev => prev.filter(x => x !== t)); setPage(0); }} />
@@ -293,7 +366,8 @@ export default function ReportsPage() {
                 {activeFilterCount > 0 && (
                   <Button size="small" onClick={() => {
                     setFilterEventTypes([]); setFilterRewardType(""); setFilterWallet("");
-                    setFilterMemberID(""); setFilterAmountMin(""); setFilterAmountMax(""); setPage(0);
+                    setFilterMemberID(""); setFilterAmountMin(""); setFilterAmountMax("");
+                    setLeaderboardTop(0); setPage(0);
                   }}>Clear All</Button>
                 )}
               </Box>
@@ -306,12 +380,18 @@ export default function ReportsPage() {
       {loading && (
         <Paper sx={{ p: 2, mb: 2 }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-            <Typography variant="body2">Fetching events...</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {completedChunks} / {totalChunks} chunks
+            <Typography variant="body2">
+              {cacheStatus === "loading-cache" ? "Loading cached events..." :
+               cacheStatus === "syncing" && totalChunks === 0 ? `Fetching events${completedChunks > 0 ? ` (page ${completedChunks})` : ""}...` :
+               totalChunks > 0 ? "Syncing new events (RPC fallback)..." : "Checking for new events..."}
             </Typography>
+            {totalChunks > 0 && (
+              <Typography variant="body2" color="text.secondary">
+                {completedChunks} / {totalChunks} chunks
+              </Typography>
+            )}
           </Box>
-          <LinearProgress variant="determinate" value={progress * 100} />
+          <LinearProgress variant={totalChunks > 0 ? "determinate" : "indeterminate"} value={progress * 100} />
         </Paper>
       )}
 
@@ -366,7 +446,57 @@ export default function ReportsPage() {
             </Stack>
           </Box>
 
-          {/* Events table */}
+          {/* Leaderboard table */}
+          {leaderboardTop > 0 ? (
+          <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
+            <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 1 }}>
+              <EmojiEventsIcon color="warning" />
+              <Typography variant="h6" sx={{ fontSize: { xs: "1rem", sm: "1.25rem" } }}>
+                Top {leaderboardTop} — Accumulated Rewards
+                {filterRewardType !== "" && rewardTypeNames[filterRewardType as number] ? ` (${rewardTypeNames[filterRewardType as number]})` : ""}
+              </Typography>
+            </Box>
+            <Table size="small" sx={{ minWidth: { xs: 360, sm: 500 } }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ whiteSpace: "nowrap", width: 60 }}>Rank</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>Member Code</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>Join Date</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }} align="right">Accumulated Rewards</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {leaderboardData.map((row) => (
+                  <TableRow key={row.rank} hover>
+                    <TableCell>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                        {row.rank <= 3 ? (
+                          <EmojiEventsIcon sx={{ fontSize: 18, color: row.rank === 1 ? "#FFD700" : row.rank === 2 ? "#C0C0C0" : "#CD7F32" }} />
+                        ) : null}
+                        <Typography variant="body2" sx={{ fontWeight: row.rank <= 3 ? 700 : 400 }}>{row.rank}</Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>{row.memberCode}</TableCell>
+                    <TableCell>{formatTimestamp(row.joinTimestamp)}</TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: "success.main" }}>
+                        {formatFula(row.total)} FULA
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {leaderboardData.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} align="center">
+                      <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>No deposit data found.</Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          ) : (
+          /* Events table */
           <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
             <Table size="small" sx={{ minWidth: { xs: 420, sm: 700 } }}>
               <TableHead>
@@ -444,6 +574,7 @@ export default function ReportsPage() {
               }}
             />
           </TableContainer>
+          )}
         </>
       )}
 

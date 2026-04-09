@@ -15,6 +15,7 @@ import BlockIcon from "@mui/icons-material/Block";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import ContentPasteIcon from "@mui/icons-material/ContentPaste";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { useAccount, useReadContract } from "wagmi";
 import { useSearchParams } from "next/navigation";
@@ -29,10 +30,10 @@ import {
   useAddRewardType, useRemoveRewardType, useRewardTypes,
   useAddSubType, useRemoveSubType, useSubTypes,
   useDepositTokens, useTransferToSubMember, useTransferToParent, useWithdraw,
-  useTokenBalance,
+  useTokenBalance, useProgramLogo, useSetProgramLogo,
 } from "@/hooks/useRewardsProgram";
 import { MemberRoleLabels, MemberRoleEnum, MemberTypeLabels, CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
-import { fromBytes8, fromBytes12, fromBytes16, toBytes12, shortenAddress, formatFula, isValidAddress, formatContractError } from "@/lib/utils";
+import { fromBytes8, fromBytes12, fromBytes16, toBytes12, shortenAddress, formatFula, isValidAddress, formatContractError, ipfsLogoUrl, parseCID } from "@/lib/utils";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
 
@@ -290,6 +291,13 @@ function ProgramDetail({ programId }: { programId: number }) {
   const { deactivateProgram, isPending: isPendingDP, isConfirming: isConfirmingDP, isSuccess: isSuccessDP, error: errorDP } = useDeactivateProgram();
   const [openDeactivate, setOpenDeactivate] = useState(false);
 
+  // Program Logo
+  const { data: logoCID } = useProgramLogo(programId);
+  const logoUrl = logoCID ? ipfsLogoUrl(logoCID as string) : "";
+  const { setProgramLogo, isPending: isPendingLogo, isConfirming: isConfirmingLogo, isSuccess: isSuccessLogo, error: errorLogo } = useSetProgramLogo();
+  const [openLogo, setOpenLogo] = useState(false);
+  const [logoCIDInput, setLogoCIDInput] = useState("");
+
   // Show generated editCode
   const [showEditCodeDialog, setShowEditCodeDialog] = useState(false);
   const [displayEditCode, setDisplayEditCode] = useState("");
@@ -414,6 +422,14 @@ function ProgramDetail({ programId }: { programId: number }) {
     }
   }, [isSuccessDP, refetchProgram]);
 
+  // After logo set
+  useEffect(() => {
+    if (isSuccessLogo) {
+      const t = setTimeout(() => setOpenLogo(false), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [isSuccessLogo]);
+
   const handleAssignPA = () => {
     const wallet = (paWallet || "0x0000000000000000000000000000000000000000") as `0x${string}`;
     let hash: `0x${string}` = "0x0000000000000000000000000000000000000000000000000000000000000000";
@@ -458,6 +474,20 @@ function ProgramDetail({ programId }: { programId: number }) {
           <IconButton component={Link} href="/programs" sx={{ mt: 0.5 }} aria-label="Back to programs">
             <ArrowBackIcon />
           </IconButton>
+          {logoUrl && (
+            <Box
+              component="img"
+              src={logoUrl}
+              alt={`${program.name} logo`}
+              sx={{
+                width: { xs: 56, sm: 72 },
+                height: { xs: 56, sm: 72 },
+                borderRadius: 2,
+                objectFit: "contain",
+                flexShrink: 0,
+              }}
+            />
+          )}
           <Box>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
               <Typography variant="h5">{program.name}</Typography>
@@ -485,6 +515,12 @@ function ProgramDetail({ programId }: { programId: number }) {
                 </Button>
               </Tooltip>
             </>
+          )}
+          {canManageProgram && program.active && (
+            <Button size="small" variant="outlined"
+              onClick={() => { setLogoCIDInput((logoCID as string) || ""); setOpenLogo(true); }}>
+              {logoUrl ? "Change Logo" : "Set Logo"}
+            </Button>
           )}
           {canSetTransferLimit && program.active && (
             <Button size="small" variant="outlined"
@@ -875,6 +911,60 @@ function ProgramDetail({ programId }: { programId: number }) {
           <Button variant="contained" color="error" onClick={() => deactivateProgram(programId)}
             disabled={isPendingDP || isConfirmingDP}>
             {isPendingDP || isConfirmingDP ? <CircularProgress size={20} /> : "Deactivate"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Set Logo Dialog */}
+      <Dialog open={openLogo} onClose={() => setOpenLogo(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Set Program Logo</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Enter an IPFS CID for the program logo image (recommended 256x256px or larger, square).
+          </Typography>
+          <TextField
+            label="IPFS CID or Gateway URL"
+            value={logoCIDInput}
+            onChange={(e) => setLogoCIDInput(parseCID(e.target.value))}
+            fullWidth
+            margin="normal"
+            placeholder="bafkr4i... or https://ipfs.cloud.fx.land/gateway/bafkr4i..."
+            inputProps={{ maxLength: 256 }}
+            InputProps={{
+              endAdornment: (
+                <Tooltip title="Paste from clipboard">
+                  <IconButton size="small" onClick={async () => {
+                    try {
+                      const text = await navigator.clipboard.readText();
+                      if (text) setLogoCIDInput(parseCID(text));
+                    } catch { /* clipboard permission denied */ }
+                  }}>
+                    <ContentPasteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              ),
+            }}
+          />
+          {logoCIDInput && (
+            <Box sx={{ mt: 2, textAlign: "center" }}>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>Preview:</Typography>
+              <Box
+                component="img"
+                src={ipfsLogoUrl(logoCIDInput)}
+                alt="Logo preview"
+                sx={{ maxWidth: 128, maxHeight: 128, borderRadius: 2 }}
+                onError={(e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.style.display = "none"; }}
+              />
+            </Box>
+          )}
+          {errorLogo && <Alert severity="error" sx={{ mt: 2 }}>{formatContractError(errorLogo)}</Alert>}
+          {isSuccessLogo && <Alert severity="success" sx={{ mt: 2 }}>Logo updated!</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenLogo(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => setProgramLogo(programId, logoCIDInput)}
+            disabled={isPendingLogo || isConfirmingLogo || !logoCIDInput}>
+            {isPendingLogo || isConfirmingLogo ? <CircularProgress size={20} /> : "Save"}
           </Button>
         </DialogActions>
       </Dialog>

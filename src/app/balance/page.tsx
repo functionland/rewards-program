@@ -11,7 +11,7 @@ import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { useSearchParams } from "next/navigation";
 import { zeroAddress, encodePacked, keccak256, getAddress } from "viem";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberTypeLabels } from "@/config/contracts";
-import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatContractError, fromBytes16 } from "@/lib/utils";
+import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatContractError, fromBytes16, ipfsLogoUrl } from "@/lib/utils";
 
 /** Compute the virtual storage key for a walletless member (mirrors _virtualAddr in contract) */
 function virtualAddr(memberID: string, programId: number): `0x${string}` {
@@ -21,7 +21,7 @@ function virtualAddr(memberID: string, programId: number): `0x${string}` {
   return getAddress("0x" + hash.slice(-40)) as `0x${string}`;
 }
 import { QRCodeSVG } from "qrcode.react";
-import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useDepositTokens, useRewardTypes, useTransferLimit, useClaimMember } from "@/hooks/useRewardsProgram";
+import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useDepositTokens, useRewardTypes, useTransferLimit, useClaimMember, useProgramLogo } from "@/hooks/useRewardsProgram";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
 import { QRScannerButton } from "@/components/common/QRScannerButton";
@@ -399,6 +399,10 @@ function BalanceContent() {
     setSearchID(m);
   };
 
+  const claimProgramId = claimParam ? parseInt(claimParam) : 0;
+  const { data: logoCID } = useProgramLogo(claimProgramId);
+  const logoUrl = logoCID ? ipfsLogoUrl(logoCID as string) : "";
+
   const [redeemQrUrl, setRedeemQrUrl] = useState("");
   useEffect(() => {
     if (typeof window !== "undefined" && searchID && codeParam && claimParam && memberExists) {
@@ -414,10 +418,30 @@ function BalanceContent() {
 
       {redeemQrUrl && (
         <Paper sx={{ p: 2, mb: 3, textAlign: "center" }}>
+          {logoUrl && (
+            <Box
+              component="img"
+              src={logoUrl}
+              alt="Program logo"
+              sx={{ width: 48, height: 48, borderRadius: 1, objectFit: "contain", mb: 1 }}
+            />
+          )}
           <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
             Scan to redeem rewards
           </Typography>
-          <QRCodeSVG value={redeemQrUrl} size={isMobile ? 160 : 200} level="M" />
+          <QRCodeSVG
+            value={redeemQrUrl}
+            size={isMobile ? 220 : 280}
+            level={logoUrl ? "H" : "M"}
+            {...(logoUrl ? {
+              imageSettings: {
+                src: logoUrl,
+                height: isMobile ? 55 : 70,
+                width: isMobile ? 55 : 70,
+                excavate: true,
+              }
+            } : {})}
+          />
           <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
             {searchID} &middot; Program {claimParam}
           </Typography>

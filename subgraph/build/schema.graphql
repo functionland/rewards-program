@@ -1,0 +1,15 @@
+type ContractEvent @entity(immutable: true) {
+  id: Bytes!
+  eventType: String!
+  programId: Int!
+  wallet: Bytes!
+  amount: BigInt!
+  detail: String
+  rewardType: Int
+  note: String
+  depositId: String
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+}

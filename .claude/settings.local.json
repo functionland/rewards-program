@@ -43,7 +43,28 @@
       "Read(//mnt/e/GitHub/fula-chain/**)",
       "Read(//mnt/e/GitHub/**)",
       "Bash(HARDHAT_CONTRACT_SIZER=false npx hardhat test test/governance/integration/RewardsProgram.test.ts --no-compile)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(awk '{print $9, $5}')",
+      "Bash(curl -s \"https://docs.alchemy.com/reference/alchemy-getassettransfers\")",
+      "Bash(curl -s \"https://docs.moralis.io/web3-data-api/evm/reference/get-contract-events\")",
+      "Bash(curl -s \"https://docs.drpc.org/\")",
+      "Bash(curl -s \"https://docs.basescan.org/api-endpoints/logs\")",
+      "WebSearch",
+      "WebFetch(domain:docs.alchemy.com)",
+      "WebFetch(domain:www.alchemy.com)",
+      "WebFetch(domain:docs.moralis.io)",
+      "WebFetch(domain:docs.moralis.com)",
+      "WebFetch(domain:docs.cdp.coinbase.com)",
+      "WebFetch(domain:drpc.org)",
+      "WebFetch(domain:docs.etherscan.io)",
+      "WebFetch(domain:moralis.com)",
+      "WebFetch(domain:onfinality.io)",
+      "WebFetch(domain:www.coinbase.com)",
+      "WebFetch(domain:info.etherscan.com)",
+      "WebFetch(domain:thegraph.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:docs.thegraph.academy)"
     ]
   }
 }

@@ -30,6 +30,16 @@ export function useProgram(programId: number) {
   });
 }
 
+export function useProgramLogo(programId: number) {
+  return useReadContract({
+    address: CONTRACTS.rewardsProgram,
+    abi: REWARDS_PROGRAM_ABI,
+    functionName: "getProgramLogo",
+    args: [programId],
+    query: { enabled: programId > 0 },
+  });
+}
+
 export function useMemberBalance(programId: number, wallet?: `0x${string}`) {
   return useReadContract({
     address: CONTRACTS.rewardsProgram,
@@ -454,6 +464,23 @@ export function useUpdateProgram() {
   };
 
   return { updateProgram, isPending, isConfirming, isSuccess, error, hash };
+}
+
+export function useSetProgramLogo() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  useRefetchOnSuccess(isSuccess);
+
+  const setProgramLogo = (programId: number, logoCID: string) => {
+    writeContract({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "setProgramLogo",
+      args: [programId, logoCID],
+    });
+  };
+
+  return { setProgramLogo, isPending, isConfirming, isSuccess, error, hash };
 }
 
 export function useDeactivateProgram() {
