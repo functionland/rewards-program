@@ -14,8 +14,9 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import CachedIcon from "@mui/icons-material/Cached";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { parseUnits } from "viem";
-import { useReadContract } from "wagmi";
+import { useReadContract, useChainId, useChains } from "wagmi";
 import { CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
 import { useRewardTypes, useProgramCodeToId } from "@/hooks/useRewardsProgram";
 import { useChunkedEventLogs, type TimeRange } from "@/hooks/useChunkedEventLogs";
@@ -187,6 +188,10 @@ export default function ReportsPage() {
     if (!ts) return "-";
     return new Date(ts * 1000).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
   };
+
+  const chainId = useChainId();
+  const chains = useChains();
+  const explorerUrl = chains.find(c => c.id === chainId)?.blockExplorers?.default?.url || "https://basescan.org";
 
   const handleGenerate = () => {
     if (loading) {
@@ -507,7 +512,7 @@ export default function ReportsPage() {
                   <TableCell sx={{ whiteSpace: "nowrap" }}>Amount / Detail</TableCell>
                   {!isMobile && <TableCell sx={{ whiteSpace: "nowrap" }}>Reward Type</TableCell>}
                   {!isMobile && <TableCell sx={{ whiteSpace: "nowrap" }}>Note</TableCell>}
-                  {!isMobile && <TableCell sx={{ whiteSpace: "nowrap" }}>Block</TableCell>}
+                  {!isMobile && <TableCell sx={{ whiteSpace: "nowrap" }} align="center">Tx</TableCell>}
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -552,7 +557,21 @@ export default function ReportsPage() {
                         {row.note || "-"}
                       </TableCell>
                     )}
-                    {!isMobile && <TableCell>{row.blockNumber.toString()}</TableCell>}
+                    {!isMobile && (
+                      <TableCell align="center">
+                        <Tooltip title="View on explorer" arrow>
+                          <IconButton
+                            size="small"
+                            component="a"
+                            href={`${explorerUrl}/tx/${row.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <OpenInNewIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
