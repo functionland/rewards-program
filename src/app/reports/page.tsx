@@ -16,7 +16,7 @@ import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import CachedIcon from "@mui/icons-material/Cached";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { parseUnits } from "viem";
-import { useReadContract, useChainId, useChains } from "wagmi";
+import { useReadContract, useReadContracts, useChainId, useChains } from "wagmi";
 import { CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
 import { useRewardTypes, useProgramCodeToId } from "@/hooks/useRewardsProgram";
 import { useChunkedEventLogs, type TimeRange } from "@/hooks/useChunkedEventLogs";
@@ -135,13 +135,64 @@ export default function ReportsPage() {
   const memberEventCount = filteredEvents.filter(e => ["MemberAdded", "PAAssigned", "MemberRemoved", "MemberClaimed", "WalletChanged", "MemberIDUpdated", "TypeChanged"].includes(e.type)).length;
   const adminEventCount = filteredEvents.filter(e => ["ProgramCreated", "ProgramUpdated", "ProgramDeactivated", "LimitUpdated", "RewardTypeAdded", "RewardTypeRemoved", "SubTypeAdded", "SubTypeRemoved"].includes(e.type)).length;
 
-  const rewardTypeNames: Record<number, string> = {};
-  if (rewardTypesData) {
-    const data = rewardTypesData as [number[], `0x${string}`[]];
-    data[0]?.forEach((id: number, idx: number) => {
-      rewardTypeNames[id] = fromBytes16(data[1][idx]) || `Type ${id}`;
+  const { rewardTypeNames, rewardTypeIds } = useMemo(() => {
+    const names: Record<number, string> = {};
+    const ids: number[] = [];
+    if (rewardTypesData) {
+      const data = rewardTypesData as [number[], `0x${string}`[]];
+      data[0]?.forEach((id: number, idx: number) => {
+        names[id] = fromBytes16(data[1][idx]) || `Type ${id}`;
+        ids.push(Number(id));
+      });
+    }
+    return { rewardTypeNames: names, rewardTypeIds: ids };
+  }, [rewardTypesData]);
+
+  // Batch-fetch sub-type names for all reward types in one multicall (single RPC).
+  // Skips entirely when no program is selected or no reward types are configured.
+  const subTypeContracts = useMemo(
+    () => (resolvedProgramId > 0 ? rewardTypeIds.map((rt) => ({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "getSubTypes" as const,
+      args: [resolvedProgramId, rt] as const,
+    })) : []),
+    [resolvedProgramId, rewardTypeIds]
+  );
+  const { data: subTypesMulticall } = useReadContracts({
+    contracts: subTypeContracts.length > 0 ? subTypeContracts : undefined,
+    query: { enabled: subTypeContracts.length > 0 },
+  });
+  const subTypeNames = useMemo(() => {
+    const map: Record<number, Record<number, string>> = {};
+    if (!subTypesMulticall) return map;
+    subTypesMulticall.forEach((result, idx) => {
+      const rt = rewardTypeIds[idx];
+      if (rt === undefined || result.status !== "success" || !result.result) return;
+      const [ids, names] = result.result as [number[], `0x${string}`[]];
+      map[rt] = {};
+      ids?.forEach((id, i) => {
+        map[rt][Number(id)] = fromBytes16(names[i]) || `Sub ${id}`;
+      });
     });
-  }
+    return map;
+  }, [subTypesMulticall, rewardTypeIds]);
+
+  // Map wallet → member code from events already in memory (no extra chain calls).
+  // Uses MemberAdded / PAAssigned / MemberIDUpdated. Later updates override earlier ones
+  // so wallet displays the current code if it was renamed within the time range.
+  const walletCodeMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    // Iterate oldest-first so the most recent rename wins
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if (!e.memberCode || !e.wallet) continue;
+      if (e.type === "MemberAdded" || e.type === "PAAssigned" || e.type === "MemberIDUpdated") {
+        map[e.wallet.toLowerCase()] = e.memberCode;
+      }
+    }
+    return map;
+  }, [events]);
 
   // Leaderboard computation
   const leaderboardData = useMemo(() => {
@@ -501,22 +552,31 @@ export default function ReportsPage() {
             </Table>
           </TableContainer>
           ) : (
-          /* Events table */
-          <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
-            <Table size="small" sx={{ minWidth: { xs: 420, sm: 700 } }}>
+          /* Events table — horizontally scrollable on mobile so all columns stay reachable */
+          <TableContainer component={Paper} sx={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            <Table size="small" sx={{ minWidth: 960 }}>
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ whiteSpace: "nowrap" }}>Type</TableCell>
-                  <TableCell sx={{ whiteSpace: "nowrap", display: { xs: "none", md: "table-cell" } }}>Prog</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>Prog</TableCell>
                   <TableCell sx={{ whiteSpace: "nowrap" }}>Wallet</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>Code</TableCell>
                   <TableCell sx={{ whiteSpace: "nowrap" }}>Amount / Detail</TableCell>
-                  {!isMobile && <TableCell sx={{ whiteSpace: "nowrap" }}>Reward Type</TableCell>}
-                  {!isMobile && <TableCell sx={{ whiteSpace: "nowrap" }}>Note</TableCell>}
-                  {!isMobile && <TableCell sx={{ whiteSpace: "nowrap" }} align="center">Tx</TableCell>}
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>Reward Type</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>Note</TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }} align="center">Tx</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {paginatedEvents.map((row, i) => (
+                {paginatedEvents.map((row, i) => {
+                  const code = row.memberCode || walletCodeMap[row.wallet.toLowerCase()] || "";
+                  const rewardName = row.rewardType !== undefined && row.rewardType > 0
+                    ? (rewardTypeNames[row.rewardType] || `Type ${row.rewardType}`)
+                    : "";
+                  const subName = row.type === "Transfer" && row.rewardType !== undefined && row.subTypeId !== undefined && row.subTypeId > 0
+                    ? (subTypeNames[row.rewardType]?.[row.subTypeId] || `Sub ${row.subTypeId}`)
+                    : "";
+                  return (
                   <TableRow key={`${row.txHash}-${i}`} hover>
                     <TableCell sx={{ py: 0.75 }}>
                       <Chip
@@ -526,9 +586,12 @@ export default function ReportsPage() {
                         sx={{ fontSize: { xs: "0.7rem", sm: "0.8125rem" }, height: { xs: 22, sm: 24 } }}
                       />
                     </TableCell>
-                    <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>{row.programId}</TableCell>
+                    <TableCell>{row.programId}</TableCell>
                     <TableCell sx={{ fontFamily: "monospace", fontSize: { xs: "0.75rem", sm: "0.85rem" } }}>
                       {row.wallet ? shortenAddress(row.wallet) : "-"}
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: code ? 600 : 400, fontSize: { xs: "0.75rem", sm: "0.85rem" } }}>
+                      {code || "-"}
                     </TableCell>
                     <TableCell>
                       {TOKEN_EVENTS.has(row.type) && row.amount > BigInt(0) && (
@@ -545,35 +608,33 @@ export default function ReportsPage() {
                         </Tooltip>
                       )}
                     </TableCell>
-                    {!isMobile && (
-                      <TableCell>
-                        {row.rewardType !== undefined && row.rewardType > 0
-                          ? (rewardTypeNames[row.rewardType] || row.rewardType)
-                          : "-"}
-                      </TableCell>
-                    )}
-                    {!isMobile && (
-                      <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {row.note || "-"}
-                      </TableCell>
-                    )}
-                    {!isMobile && (
-                      <TableCell align="center">
-                        <Tooltip title="View on explorer" arrow>
-                          <IconButton
-                            size="small"
-                            component="a"
-                            href={`${explorerUrl}/tx/${row.txHash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <OpenInNewIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </TableCell>
-                    )}
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>
+                      {rewardName || "-"}
+                      {subName && (
+                        <Typography variant="caption" color="text.secondary" component="div">
+                          {subName}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {row.note || "-"}
+                    </TableCell>
+                    <TableCell align="center">
+                      <Tooltip title="View on explorer" arrow>
+                        <IconButton
+                          size="small"
+                          component="a"
+                          href={`${explorerUrl}/tx/${row.txHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <OpenInNewIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
             <TablePagination
