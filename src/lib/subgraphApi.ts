@@ -81,6 +81,21 @@ async function queryGraph(
   }
 }
 
+// Extract memberID from detail strings produced by the subgraph/RPC parser.
+// MemberAdded: "Role / Type — ID: CODE"; PAAssigned: "ID: CODE"; MemberIDUpdated: "OLD → NEW"
+function extractMemberCode(type: string, detail: string | null | undefined): string | undefined {
+  if (!detail) return undefined;
+  if (type === "MemberIDUpdated") {
+    const m = detail.match(/→\s*(\S+)/);
+    return m ? m[1] : undefined;
+  }
+  if (type === "MemberAdded" || type === "PAAssigned") {
+    const m = detail.match(/ID:\s*(\S+)/);
+    return m ? m[1] : undefined;
+  }
+  return undefined;
+}
+
 /** Convert a subgraph event to an EventRow (direct mapping, no parseLog needed) */
 export function toEventRow(e: SubgraphEvent): EventRow {
   return {
@@ -90,6 +105,7 @@ export function toEventRow(e: SubgraphEvent): EventRow {
     amount: BigInt(e.amount),
     detail: e.detail ?? undefined,
     rewardType: e.rewardType ?? undefined,
+    memberCode: extractMemberCode(e.eventType, e.detail),
     note: e.note ?? undefined,
     depositId: e.depositId ?? undefined,
     blockNumber: BigInt(e.blockNumber),

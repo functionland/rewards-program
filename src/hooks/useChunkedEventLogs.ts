@@ -31,6 +31,8 @@ export type EventRow = {
   amount: bigint;
   detail?: string;
   rewardType?: number;
+  subTypeId?: number;    // For Transfer events; decoded from event log, no extra call
+  memberCode?: string;   // For member events; UTF-8 memberID extracted at decode time
   note?: string;
   depositId?: string;
   blockNumber: bigint;
@@ -162,7 +164,7 @@ function parseLog(log: { topics: Hex[]; data: Hex; blockNumber: bigint; transact
       case "TokensTransferredToMember":
         return { ...base, type: "Transfer", programId: Number(a.programId),
           wallet: String(a.from ?? ""), amount: BigInt(a.amount as bigint ?? 0),
-          rewardType: Number(a.rewardType ?? 0),
+          rewardType: Number(a.rewardType ?? 0), subTypeId: Number(a.subTypeId ?? 0),
           detail: a.locked ? `Locked ${a.lockTimeDays}d → ${String(a.to ?? "").slice(0, 10)}…` : `→ ${String(a.to ?? "").slice(0, 10)}…`,
           note: String(a.note ?? "") };
       case "TokensTransferredToParent":
@@ -178,10 +180,12 @@ function parseLog(log: { topics: Hex[]; data: Hex; blockNumber: bigint; transact
       case "MemberAdded":
         return { ...base, type: "MemberAdded", programId: Number(a.programId),
           wallet: String(a.wallet ?? ""), amount: BigInt(0),
+          memberCode: hexToUtf8(String(a.memberID)),
           detail: `${ROLE_LABELS[Number(a.role)] || "Role" + a.role} / ${TYPE_LABELS[Number(a.memberType)] || "Type" + a.memberType} — ID: ${hexToUtf8(String(a.memberID))}` };
       case "ProgramAdminAssigned":
         return { ...base, type: "PAAssigned", programId: Number(a.programId),
           wallet: String(a.wallet ?? ""), amount: BigInt(0),
+          memberCode: hexToUtf8(String(a.memberID)),
           detail: `ID: ${hexToUtf8(String(a.memberID))}` };
       case "MemberRemoved":
         return { ...base, type: "MemberRemoved", programId: Number(a.programId),
@@ -197,6 +201,7 @@ function parseLog(log: { topics: Hex[]; data: Hex; blockNumber: bigint; transact
       case "MemberIDUpdated":
         return { ...base, type: "MemberIDUpdated", programId: Number(a.programId),
           wallet: String(a.wallet ?? ""), amount: BigInt(0),
+          memberCode: hexToUtf8(String(a.newMemberID)),
           detail: `${hexToUtf8(String(a.oldMemberID))} → ${hexToUtf8(String(a.newMemberID))}` };
       case "MemberTypeChanged":
         return { ...base, type: "TypeChanged", programId: Number(a.programId),

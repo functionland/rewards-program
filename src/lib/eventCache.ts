@@ -8,6 +8,8 @@ export interface CachedEvent {
   amount: string;
   detail?: string;
   rewardType?: number;
+  subTypeId?: number;
+  memberCode?: string;
   note?: string;
   depositId?: string;
   blockNumber: number;
@@ -151,6 +153,8 @@ export function serializeEvent(row: EventRow, contractAddress: string): CachedEv
     amount: row.amount.toString(),
     detail: row.detail,
     rewardType: row.rewardType,
+    subTypeId: row.subTypeId,
+    memberCode: row.memberCode,
     note: row.note,
     depositId: row.depositId,
     blockNumber: Number(row.blockNumber),
@@ -158,6 +162,21 @@ export function serializeEvent(row: EventRow, contractAddress: string): CachedEv
     contractAddress: contractAddress.toLowerCase(),
     timestamp: row.timestamp ?? 0,
   };
+}
+
+// Back-fill memberCode for events cached before the field existed.
+// MemberAdded: "Role / Type — ID: CODE"; PAAssigned: "ID: CODE"; MemberIDUpdated: "OLD → NEW"
+function backfillMemberCode(type: string, detail: string | undefined): string | undefined {
+  if (!detail) return undefined;
+  if (type === "MemberIDUpdated") {
+    const m = detail.match(/→\s*(\S+)/);
+    return m ? m[1] : undefined;
+  }
+  if (type === "MemberAdded" || type === "PAAssigned") {
+    const m = detail.match(/ID:\s*(\S+)/);
+    return m ? m[1] : undefined;
+  }
+  return undefined;
 }
 
 export function deserializeEvent(cached: CachedEvent): EventRow {
@@ -168,6 +187,8 @@ export function deserializeEvent(cached: CachedEvent): EventRow {
     amount: BigInt(cached.amount),
     detail: cached.detail,
     rewardType: cached.rewardType,
+    subTypeId: cached.subTypeId,
+    memberCode: cached.memberCode ?? backfillMemberCode(cached.type, cached.detail),
     note: cached.note,
     depositId: cached.depositId,
     blockNumber: BigInt(cached.blockNumber),
