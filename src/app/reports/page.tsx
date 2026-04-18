@@ -20,7 +20,7 @@ import { useReadContract, useReadContracts, useChainId, useChains } from "wagmi"
 import { CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
 import { useRewardTypes, useProgramCodeToId, useProgram, useProgramLogo, useProgramCount } from "@/hooks/useRewardsProgram";
 import { useChunkedEventLogs, type TimeRange } from "@/hooks/useChunkedEventLogs";
-import { formatFula, shortenAddress, fromBytes8, fromBytes16, toBytes12, ipfsLogoUrl } from "@/lib/utils";
+import { formatFula, shortenAddress, fromBytes8, fromBytes12, fromBytes16, toBytes12, ipfsLogoUrl } from "@/lib/utils";
 
 // Event type → chip color
 type ChipColor = "success" | "info" | "warning" | "secondary" | "primary" | "default" | "error";
@@ -270,6 +270,60 @@ export default function ReportsPage() {
     return map;
   }, [events]);
 
+  // Fallback: batch-resolve wallets whose MemberAdded / PAAssigned event
+  // happened *before* the selected time range (and so isn't in `events`).
+  // One getMember(programId, wallet) call per unresolved full address, all
+  // bundled into a single multicall. Prefix-only recipients (subgraph path)
+  // can't be resolved here because we don't have the full address; those
+  // still rely on the prefix map below matching some other event's wallet.
+  const unresolvedWallets = useMemo(() => {
+    if (resolvedProgramId === 0) return [] as string[];
+    const set = new Set<string>();
+    for (const e of events) {
+      for (const w of [e.wallet, e.toWallet]) {
+        if (!w || w.length !== 42) continue;
+        const lower = w.toLowerCase();
+        if (lower === "0x0000000000000000000000000000000000000000") continue;
+        if (walletCodeMap[lower]) continue;
+        set.add(lower);
+      }
+    }
+    return Array.from(set);
+  }, [events, resolvedProgramId, walletCodeMap]);
+  const memberLookupContracts = useMemo(
+    () => unresolvedWallets.map((w) => ({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "getMember" as const,
+      args: [resolvedProgramId, w as `0x${string}`] as const,
+    })),
+    [unresolvedWallets, resolvedProgramId]
+  );
+  const { data: memberLookupResults } = useReadContracts({
+    contracts: memberLookupContracts.length > 0 ? memberLookupContracts : undefined,
+    query: { enabled: memberLookupContracts.length > 0 },
+  });
+  const contractWalletCodeMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    if (!memberLookupResults) return map;
+    memberLookupResults.forEach((result, idx) => {
+      if (result.status !== "success" || !result.result) return;
+      const m = result.result as { wallet: string; memberID: `0x${string}` };
+      if (!m.wallet || m.wallet === "0x0000000000000000000000000000000000000000") return;
+      const code = fromBytes12(m.memberID);
+      if (code) map[unresolvedWallets[idx]] = code;
+    });
+    return map;
+  }, [memberLookupResults, unresolvedWallets]);
+
+  // Event-derived codes win over contract-derived (events reflect renames
+  // inside the range; contract reflects current state — same except during
+  // an in-range rename, where the event is authoritative).
+  const combinedWalletCodeMap = useMemo(
+    () => ({ ...contractWalletCodeMap, ...walletCodeMap }),
+    [contractWalletCodeMap, walletCodeMap]
+  );
+
   // Secondary lookup keyed on the 10-char address prefix. Used when only a
   // truncated recipient ("→ 0xabcd1234…") is available from the detail string
   // — e.g. Transfer events loaded via the subgraph, whose schema does not
@@ -277,11 +331,11 @@ export default function ReportsPage() {
   // impossible for this dataset size.
   const walletPrefixCodeMap = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const [wallet, code] of Object.entries(walletCodeMap)) {
+    for (const [wallet, code] of Object.entries(combinedWalletCodeMap)) {
       map[wallet.slice(0, 10).toLowerCase()] = code;
     }
     return map;
-  }, [walletCodeMap]);
+  }, [combinedWalletCodeMap]);
 
   // Leaderboard computation
   const leaderboardData = useMemo(() => {
@@ -320,11 +374,11 @@ export default function ReportsPage() {
       .slice(0, leaderboardTop)
       .map(([wallet, total], idx) => ({
         rank: idx + 1,
-        memberCode: walletCodeMap[wallet] || shortenAddress(wallet),
+        memberCode: combinedWalletCodeMap[wallet] || shortenAddress(wallet),
         joinTimestamp: walletJoinTimestamp[wallet] || 0,
         total,
       }));
-  }, [events, leaderboardTop, filterRewardType, walletCodeMap]);
+  }, [events, leaderboardTop, filterRewardType, combinedWalletCodeMap]);
 
   const formatTimestamp = (ts: number): string => {
     if (!ts) return "-";
@@ -699,8 +753,8 @@ export default function ReportsPage() {
               </TableHead>
               <TableBody>
                 {paginatedEvents.map((row, i) => {
-                  const senderCode = row.memberCode || walletCodeMap[row.wallet.toLowerCase()] || "";
-                  const recipientCode = row.toWallet ? walletCodeMap[row.toWallet.toLowerCase()] || "" : "";
+                  const senderCode = row.memberCode || combinedWalletCodeMap[row.wallet.toLowerCase()] || "";
+                  const recipientCode = row.toWallet ? combinedWalletCodeMap[row.toWallet.toLowerCase()] || "" : "";
                   const isTransferRow = row.type === "Transfer" || row.type === "TransferToParent";
                   // For transfers always show both sides ("sender → recipient"). When the full
                   // recipient address is missing (e.g. events loaded via the subgraph, which does
