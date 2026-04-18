@@ -5,6 +5,7 @@ export interface CachedEvent {
   type: string;
   programId: number;
   wallet: string;
+  toWallet?: string;
   amount: string;
   detail?: string;
   rewardType?: number;
@@ -150,6 +151,7 @@ export function serializeEvent(row: EventRow, contractAddress: string): CachedEv
     type: row.type,
     programId: row.programId,
     wallet: row.wallet,
+    toWallet: row.toWallet,
     amount: row.amount.toString(),
     detail: row.detail,
     rewardType: row.rewardType,
@@ -184,6 +186,7 @@ export function deserializeEvent(cached: CachedEvent): EventRow {
     type: cached.type,
     programId: cached.programId,
     wallet: cached.wallet,
+    toWallet: cached.toWallet,
     amount: BigInt(cached.amount),
     detail: cached.detail,
     rewardType: cached.rewardType,

@@ -8,7 +8,7 @@ import {
   LinearProgress, TablePagination, useMediaQuery, useTheme,
   InputAdornment, ListSubheader, Checkbox, ListItemText,
   Accordion, AccordionSummary, AccordionDetails, Card, CardContent,
-  Stack, Tooltip, IconButton,
+  Stack, Tooltip, IconButton, Autocomplete,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FilterListIcon from "@mui/icons-material/FilterList";
@@ -18,9 +18,9 @@ import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { parseUnits } from "viem";
 import { useReadContract, useReadContracts, useChainId, useChains } from "wagmi";
 import { CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
-import { useRewardTypes, useProgramCodeToId } from "@/hooks/useRewardsProgram";
+import { useRewardTypes, useProgramCodeToId, useProgram, useProgramLogo, useProgramCount } from "@/hooks/useRewardsProgram";
 import { useChunkedEventLogs, type TimeRange } from "@/hooks/useChunkedEventLogs";
-import { formatFula, shortenAddress, fromBytes16, toBytes12 } from "@/lib/utils";
+import { formatFula, shortenAddress, fromBytes8, fromBytes16, toBytes12, ipfsLogoUrl } from "@/lib/utils";
 
 // Event type → chip color
 type ChipColor = "success" | "info" | "warning" | "secondary" | "primary" | "default" | "error";
@@ -62,7 +62,44 @@ export default function ReportsPage() {
   const [filterProgramCode, setFilterProgramCode] = useState("");
   const { data: programIdFromCode } = useProgramCodeToId(filterProgramCode);
   const resolvedProgramId = filterProgramId ? Number(filterProgramId) : (programIdFromCode ? Number(programIdFromCode) : 0);
+
+  // Fetch all programs for the filterable dropdown. If the count call or the
+  // multicall fails, the UI falls back to a plain Program Code input.
+  const { data: programCountData, isError: programCountError } = useProgramCount();
+  const programCount = Number(programCountData || 0);
+  const programContracts = useMemo(
+    () => Array.from({ length: programCount }, (_, i) => ({
+      address: CONTRACTS.rewardsProgram,
+      abi: REWARDS_PROGRAM_ABI,
+      functionName: "getProgram" as const,
+      args: [i + 1] as const,
+    })),
+    [programCount]
+  );
+  const { data: programsMulticall, isError: programsMulticallError } = useReadContracts({
+    contracts: programContracts.length > 0 ? programContracts : undefined,
+    query: { enabled: programContracts.length > 0 },
+  });
+  const programOptions = useMemo(() => {
+    if (!programsMulticall) return [] as { id: number; code: string; name: string }[];
+    const opts: { id: number; code: string; name: string }[] = [];
+    programsMulticall.forEach((result, idx) => {
+      if (result.status !== "success" || !result.result) return;
+      const p = result.result as { id: number; code: `0x${string}`; name: string };
+      opts.push({
+        id: Number(p.id) || idx + 1,
+        code: fromBytes8(p.code),
+        name: p.name || "",
+      });
+    });
+    return opts;
+  }, [programsMulticall]);
+  const programDropdownFailed = programCountError || (programCount > 0 && programsMulticallError);
+  const programDropdownAvailable = !programDropdownFailed && programOptions.length > 0;
+  const selectedProgramOption = programOptions.find(o => o.id === resolvedProgramId) || null;
   const { data: rewardTypesData } = useRewardTypes(resolvedProgramId);
+  const { data: selectedProgram } = useProgram(resolvedProgramId);
+  const { data: selectedProgramLogoCID } = useProgramLogo(resolvedProgramId);
   const [timeRange, setTimeRange] = useState<TimeRange>("7d");
   const [trigger, setTrigger] = useState(0);
   const [page, setPage] = useState(0);
@@ -110,10 +147,16 @@ export default function ReportsPage() {
   }
   if (filterWallet) {
     const w = filterWallet.toLowerCase();
-    filteredEvents = filteredEvents.filter(e => e.wallet.toLowerCase().includes(w));
+    filteredEvents = filteredEvents.filter(e =>
+      e.wallet.toLowerCase().includes(w) || (e.toWallet?.toLowerCase().includes(w) ?? false)
+    );
   }
   if (resolvedMemberAddr) {
-    filteredEvents = filteredEvents.filter(e => e.wallet.toLowerCase() === resolvedMemberAddr);
+    // Match events where the member is either sender (wallet) or recipient (toWallet).
+    filteredEvents = filteredEvents.filter(e =>
+      e.wallet.toLowerCase() === resolvedMemberAddr ||
+      e.toWallet?.toLowerCase() === resolvedMemberAddr
+    );
   }
   if (filterAmountMin) {
     try {
@@ -147,6 +190,34 @@ export default function ReportsPage() {
     }
     return { rewardTypeNames: names, rewardTypeIds: ids };
   }, [rewardTypesData]);
+
+  // Build per-program maps for reward type and sub-type names from RewardTypeAdded /
+  // SubTypeAdded events already in memory. This works for events across multiple programs
+  // and without a selected program — no extra chain call needed when the defining events
+  // are in the time range. RewardTypeRemoved/SubTypeRemoved are not applied so historical
+  // events keep their names.
+  const { eventRewardTypeNames, eventSubTypeNames } = useMemo(() => {
+    const rt: Record<number, Record<number, string>> = {};
+    const st: Record<number, Record<number, Record<number, string>>> = {};
+    const rtRe = /^#(\d+):\s*(.+)$/;
+    const stRe = /^RT#(\d+)\s*→\s*Sub#(\d+):\s*(.+)$/;
+    for (const e of events) {
+      if (e.type === "RewardTypeAdded" && e.detail) {
+        const m = e.detail.match(rtRe);
+        if (m) {
+          (rt[e.programId] ??= {})[Number(m[1])] = m[2];
+        }
+      } else if (e.type === "SubTypeAdded" && e.detail) {
+        const m = e.detail.match(stRe);
+        if (m) {
+          const rtId = Number(m[1]);
+          const stId = Number(m[2]);
+          ((st[e.programId] ??= {})[rtId] ??= {})[stId] = m[3];
+        }
+      }
+    }
+    return { eventRewardTypeNames: rt, eventSubTypeNames: st };
+  }, [events]);
 
   // Batch-fetch sub-type names for all reward types in one multicall (single RPC).
   // Skips entirely when no program is selected or no reward types are configured.
@@ -198,29 +269,31 @@ export default function ReportsPage() {
   const leaderboardData = useMemo(() => {
     if (leaderboardTop === 0 || events.length === 0) return [];
 
-    // Map wallet → member code and earliest join timestamp
-    const walletToCode: Record<string, string> = {};
+    // Earliest join timestamp per wallet (for the Join Date column)
     const walletJoinTimestamp: Record<string, number> = {};
     for (const e of events) {
       if (e.type === "MemberAdded" || e.type === "PAAssigned") {
         const w = e.wallet.toLowerCase();
-        const match = e.detail?.match(/ID:\s*(\S+)/);
-        if (match && !walletToCode[w]) walletToCode[w] = match[1];
         if (!walletJoinTimestamp[w] || (e.timestamp > 0 && e.timestamp < walletJoinTimestamp[w])) {
           walletJoinTimestamp[w] = e.timestamp;
         }
       }
     }
 
-    // Aggregate deposits (apply reward type filter only)
-    let deposits = events.filter(e => e.type === "Deposit");
-    if (filterRewardType !== "") {
-      deposits = deposits.filter(e => e.rewardType === filterRewardType);
-    }
+    // Accumulated rewards = deposits to wallet + transfers received by wallet.
+    // Without crediting transfer recipients, members who only received tokens (not deposited for
+    // themselves) never appear — the most common case in a reward distribution flow.
     const totals: Record<string, bigint> = {};
-    for (const e of deposits) {
-      const w = e.wallet.toLowerCase();
-      totals[w] = (totals[w] || BigInt(0)) + e.amount;
+    const matchesRewardFilter = (e: typeof events[number]) =>
+      filterRewardType === "" || e.rewardType === filterRewardType;
+    for (const e of events) {
+      if (e.type === "Deposit" && matchesRewardFilter(e)) {
+        const w = e.wallet.toLowerCase();
+        totals[w] = (totals[w] || BigInt(0)) + e.amount;
+      } else if (e.type === "Transfer" && e.toWallet && matchesRewardFilter(e)) {
+        const w = e.toWallet.toLowerCase();
+        totals[w] = (totals[w] || BigInt(0)) + e.amount;
+      }
     }
 
     // Sort descending, take top N
@@ -229,11 +302,11 @@ export default function ReportsPage() {
       .slice(0, leaderboardTop)
       .map(([wallet, total], idx) => ({
         rank: idx + 1,
-        memberCode: walletToCode[wallet] || shortenAddress(wallet),
+        memberCode: walletCodeMap[wallet] || shortenAddress(wallet),
         joinTimestamp: walletJoinTimestamp[wallet] || 0,
         total,
       }));
-  }, [events, leaderboardTop, filterRewardType]);
+  }, [events, leaderboardTop, filterRewardType, walletCodeMap]);
 
   const formatTimestamp = (ts: number): string => {
     if (!ts) return "-";
@@ -270,25 +343,63 @@ export default function ReportsPage() {
     return `${selected.length} types selected`;
   };
 
+  const programLogoUrl = selectedProgramLogoCID ? ipfsLogoUrl(selectedProgramLogoCID as string) : "";
+
   return (
     <Box sx={{ px: { xs: 1, sm: 0 } }}>
-      <Typography variant="h4" gutterBottom sx={{ fontSize: { xs: "1.5rem", sm: "2.125rem" } }}>Reports</Typography>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1 }}>
+        <Typography variant="h4" sx={{ fontSize: { xs: "1.5rem", sm: "2.125rem" } }}>Reports</Typography>
+        {programLogoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={programLogoUrl}
+            alt={selectedProgram?.name || `Program ${resolvedProgramId}`}
+            title={selectedProgram?.name || `Program ${resolvedProgramId}`}
+            style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }}
+          />
+        )}
+      </Box>
 
       {/* Fetch Settings */}
       <Paper sx={{ p: { xs: 2, sm: 3 }, mb: 2 }}>
         <Typography variant="h6" gutterBottom sx={{ fontSize: { xs: "1rem", sm: "1.25rem" } }}>Fetch Settings</Typography>
         <Grid container spacing={1.5} alignItems="center">
-          <Grid item xs={6} sm={2}>
-            <TextField label="Program ID" value={filterProgramId}
-              onChange={(e) => { setFilterProgramId(e.target.value); if (e.target.value) setFilterProgramCode(""); }}
-              type="number" fullWidth size="small" placeholder="All" />
-          </Grid>
-          <Grid item xs={6} sm={2}>
-            <TextField label="Program Code" value={filterProgramCode}
-              onChange={(e) => { setFilterProgramCode(e.target.value.toUpperCase()); if (e.target.value) setFilterProgramId(""); }}
-              fullWidth size="small" placeholder="e.g. Z8X"
-              inputProps={{ maxLength: 8 }}
-              helperText={filterProgramCode && !resolvedProgramId ? "Not found" : filterProgramCode && resolvedProgramId ? `ID: ${resolvedProgramId}` : ""} />
+          <Grid item xs={12} sm={4}>
+            {programDropdownAvailable ? (
+              <Autocomplete
+                size="small"
+                options={programOptions}
+                getOptionLabel={(o) => `${o.id}: ${o.code}`}
+                isOptionEqualToValue={(o, v) => o.id === v.id}
+                value={selectedProgramOption}
+                onChange={(_, v) => {
+                  setFilterProgramId(v ? String(v.id) : "");
+                  setFilterProgramCode("");
+                }}
+                filterOptions={(options, state) => {
+                  const q = state.inputValue.trim().toLowerCase();
+                  if (!q) return options;
+                  return options.filter(o =>
+                    String(o.id).includes(q) ||
+                    o.code.toLowerCase().includes(q) ||
+                    o.name.toLowerCase().includes(q)
+                  );
+                }}
+                renderOption={(props, o) => (
+                  <Box component="li" {...props} key={o.id} sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start !important", gap: 0 }}>
+                    <Typography variant="body2">{o.id}: {o.code}</Typography>
+                    {o.name && <Typography variant="caption" color="text.secondary">{o.name}</Typography>}
+                  </Box>
+                )}
+                renderInput={(params) => <TextField {...params} label="Program" placeholder="All programs" />}
+              />
+            ) : (
+              <TextField label="Program Code" value={filterProgramCode}
+                onChange={(e) => { setFilterProgramCode(e.target.value.toUpperCase()); setFilterProgramId(""); }}
+                fullWidth size="small" placeholder="e.g. Z8X"
+                inputProps={{ maxLength: 8 }}
+                helperText={filterProgramCode && !resolvedProgramId ? "Not found" : filterProgramCode && resolvedProgramId ? `ID: ${resolvedProgramId}` : ""} />
+            )}
           </Grid>
           <Grid item xs={6} sm={4}>
             <FormControl fullWidth size="small">
@@ -569,12 +680,25 @@ export default function ReportsPage() {
               </TableHead>
               <TableBody>
                 {paginatedEvents.map((row, i) => {
-                  const code = row.memberCode || walletCodeMap[row.wallet.toLowerCase()] || "";
+                  const senderCode = row.memberCode || walletCodeMap[row.wallet.toLowerCase()] || "";
+                  const recipientCode = row.toWallet ? walletCodeMap[row.toWallet.toLowerCase()] || "" : "";
+                  const isTransferRow = row.type === "Transfer" || row.type === "TransferToParent";
+                  // For transfers show both sides ("sender → recipient"); otherwise just sender.
+                  const code = isTransferRow && row.toWallet
+                    ? `${senderCode || shortenAddress(row.wallet)} → ${recipientCode || shortenAddress(row.toWallet)}`
+                    : (senderCode || "-");
+                  // Prefer event-derived names (work per-program, no program selection required),
+                  // then the live getRewardTypes/getSubTypes query (when a program is selected),
+                  // then the numeric fallback.
                   const rewardName = row.rewardType !== undefined && row.rewardType > 0
-                    ? (rewardTypeNames[row.rewardType] || `Type ${row.rewardType}`)
+                    ? (eventRewardTypeNames[row.programId]?.[row.rewardType]
+                       || (row.programId === resolvedProgramId ? rewardTypeNames[row.rewardType] : undefined)
+                       || `Type ${row.rewardType}`)
                     : "";
-                  const subName = row.type === "Transfer" && row.rewardType !== undefined && row.subTypeId !== undefined && row.subTypeId > 0
-                    ? (subTypeNames[row.rewardType]?.[row.subTypeId] || `Sub ${row.subTypeId}`)
+                  const subName = row.rewardType !== undefined && row.rewardType > 0 && row.subTypeId !== undefined && row.subTypeId > 0
+                    ? (eventSubTypeNames[row.programId]?.[row.rewardType]?.[row.subTypeId]
+                       || (row.programId === resolvedProgramId ? subTypeNames[row.rewardType]?.[row.subTypeId] : undefined)
+                       || `Sub ${row.subTypeId}`)
                     : "";
                   return (
                   <TableRow key={`${row.txHash}-${i}`} hover>

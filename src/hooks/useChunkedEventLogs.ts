@@ -27,7 +27,8 @@ const BACKOFF_DELAYS = [3000, 6000, 12000, 20000];
 export type EventRow = {
   type: string;
   programId: number;
-  wallet: string;
+  wallet: string;        // Sender / subject of the event
+  toWallet?: string;     // Recipient for Transfer / TransferToParent — enables filtering/display from recipient side
   amount: bigint;
   detail?: string;
   rewardType?: number;
@@ -163,13 +164,15 @@ function parseLog(log: { topics: Hex[]; data: Hex; blockNumber: bigint; transact
           note: String(a.note ?? "") };
       case "TokensTransferredToMember":
         return { ...base, type: "Transfer", programId: Number(a.programId),
-          wallet: String(a.from ?? ""), amount: BigInt(a.amount as bigint ?? 0),
+          wallet: String(a.from ?? ""), toWallet: String(a.to ?? ""),
+          amount: BigInt(a.amount as bigint ?? 0),
           rewardType: Number(a.rewardType ?? 0), subTypeId: Number(a.subTypeId ?? 0),
           detail: a.locked ? `Locked ${a.lockTimeDays}d → ${String(a.to ?? "").slice(0, 10)}…` : `→ ${String(a.to ?? "").slice(0, 10)}…`,
           note: String(a.note ?? "") };
       case "TokensTransferredToParent":
         return { ...base, type: "TransferToParent", programId: Number(a.programId),
-          wallet: String(a.from ?? ""), amount: BigInt(a.amount as bigint ?? 0),
+          wallet: String(a.from ?? ""), toWallet: String(a.to ?? ""),
+          amount: BigInt(a.amount as bigint ?? 0),
           detail: `→ ${String(a.to ?? "").slice(0, 10)}…`, note: String(a.note ?? "") };
       case "TokensWithdrawn":
         return { ...base, type: "Withdrawal", programId: Number(a.programId),

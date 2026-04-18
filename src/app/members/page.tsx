@@ -12,7 +12,7 @@ import { useAccount, useReadContract } from "wagmi";
 import { keccak256 } from "viem";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberTypeLabels, MemberRoleEnum } from "@/config/contracts";
 import { toBytes12, toBytes8, fromBytes12, shortenAddress, formatFula, formatContractError, isValidAddress } from "@/lib/utils";
-import { useProgramCodeToId, useSetMemberWallet, useSetEditCodeHash, useSetMemberType, useRemoveMember, useUpdateMemberID } from "@/hooks/useRewardsProgram";
+import { useProgramCodeToId, useSetMemberWallet, useSetEditCodeHash, useSetMemberType, useRemoveMember, useUpdateMemberID, useProgram } from "@/hooks/useRewardsProgram";
 import { useUserRole, useMemberRole } from "@/hooks/useUserRole";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
 import { QRScannerButton } from "@/components/common/QRScannerButton";
@@ -87,6 +87,7 @@ export default function MembersPage() {
 
   const memberIdStr = memberByID ? fromBytes12(memberByID.memberID as `0x${string}`) : "";
   const memberProgramId = memberByID ? Number(memberByID.programId) : 0;
+  const { data: memberProgram } = useProgram(memberProgramId);
   const memberFound = searchTriggered && searchType === "memberID" && memberByID && memberByID.active;
 
   // Determine if connected user can manage this member
@@ -210,7 +211,7 @@ export default function MembersPage() {
                   </TableCell>
                   <TableCell>{memberByID.active ? "Active" : "Inactive"}</TableCell>
                   <TableCell>
-                    <QRCodeDisplay programId={memberProgramId} memberID={memberIdStr} size={64} />
+                    <QRCodeDisplay programId={memberProgramId} memberID={memberIdStr} programName={memberProgram?.name} size={64} />
                   </TableCell>
                 </TableRow>
               </TableBody>

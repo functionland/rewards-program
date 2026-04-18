@@ -97,7 +97,7 @@ function MemberProgramCard({ memberID, programId, isMobile }: { memberID: string
         </Box>
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <Typography variant="caption" color="text.secondary">Parent: {shortenAddress(member.parent)}</Typography>
-          <QRCodeDisplay programId={programId} memberID={memberID} size={80} />
+          <QRCodeDisplay programId={programId} memberID={memberID} programName={programName} size={80} />
         </Box>
       </Paper>
     );
@@ -120,7 +120,7 @@ function MemberProgramCard({ memberID, programId, isMobile }: { memberID: string
       <TableCell sx={{ color: "warning.main" }}>{balance ? formatFula(balance[2]) : "-"}</TableCell>
       <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>{member.active ? "Active" : "Inactive"}</TableCell>
       <TableCell>
-        <QRCodeDisplay programId={programId} memberID={memberID} size={120} />
+        <QRCodeDisplay programId={programId} memberID={memberID} programName={programName} size={120} />
       </TableCell>
     </TableRow>
   );

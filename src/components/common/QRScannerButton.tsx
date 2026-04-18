@@ -14,6 +14,25 @@ interface QRScannerButtonProps {
   tooltip?: string;
 }
 
+// Accept both the current transfer-link URL format (/tokens?program=X&member=CODE)
+// and the legacy JSON payload ({p,m}) so older printed QRs still work.
+function parseQRCode(decoded: string): QRScanResult | null {
+  const trimmed = decoded.trim();
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith("/")) {
+    try {
+      const url = new URL(trimmed, typeof window !== "undefined" ? window.location.origin : "http://localhost");
+      const program = Number(url.searchParams.get("program"));
+      const member = url.searchParams.get("member");
+      if (program > 0 && member) return { programId: program, memberID: member };
+    } catch { /* fall through to JSON */ }
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed?.p && parsed?.m) return { programId: Number(parsed.p), memberID: String(parsed.m) };
+  } catch { /* not JSON either */ }
+  return null;
+}
+
 export function QRScannerButton({ onScan, tooltip = "Scan member QR code" }: QRScannerButtonProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
@@ -49,17 +68,13 @@ export function QRScannerButton({ onScan, tooltip = "Scan member QR code" }: QRS
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
-          try {
-            const parsed = JSON.parse(decodedText);
-            if (parsed.p && parsed.m) {
-              onScan({ programId: parsed.p, memberID: parsed.m });
-              stopScanner();
-              setOpen(false);
-            } else {
-              setError("Invalid QR code format");
-            }
-          } catch {
-            setError("Could not parse QR code data");
+          const result = parseQRCode(decodedText);
+          if (result) {
+            onScan(result);
+            stopScanner();
+            setOpen(false);
+          } else {
+            setError("Invalid QR code format");
           }
         },
         () => {} // ignore scan failures (frames without QR)

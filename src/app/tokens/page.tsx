@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import {
   Typography, Box, Paper, TextField, Button, Grid, Tabs, Tab,
   Alert, CircularProgress, FormControlLabel, Checkbox,
@@ -8,6 +8,7 @@ import {
 } from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { useAccount, useReadContract } from "wagmi";
+import { useSearchParams } from "next/navigation";
 import { zeroAddress } from "viem";
 import {
   useDepositTokens, useTransferToSubMember, useTransferToParent,
@@ -23,6 +24,16 @@ function TabPanel({ children, value, index }: { children: React.ReactNode; value
 }
 
 export default function TokensPage() {
+  // useSearchParams must be inside a Suspense boundary in app router pages.
+  return (
+    <Suspense fallback={null}>
+      <TokensPageInner />
+    </Suspense>
+  );
+}
+
+function TokensPageInner() {
+  const searchParams = useSearchParams();
   const { address } = useAccount();
   const [tab, setTab] = useState(0);
   const [programId, setProgramId] = useState("1");
@@ -101,6 +112,26 @@ export default function TokensPage() {
   const parentAddr = myMember?.parent && myMember.parent !== zeroAddress ? myMember.parent as string : "";
 
   const transferToValid = !transferTo || isValidAddress(transferTo);
+
+  // One-shot deep-link hydration: /tokens?program=X&member=CODE&action=transfer opens
+  // the Transfer tab prefilled (used by the member-QR scan-with-camera flow).
+  // Read only on mount so subsequent user edits aren't clobbered by stale URL params.
+  useEffect(() => {
+    const programParam = searchParams.get("program");
+    const memberParam = searchParams.get("member");
+    const actionParam = searchParams.get("action");
+    if (programParam && Number(programParam) > 0) {
+      setProgramId(programParam);
+    }
+    if (actionParam === "transfer") {
+      setTab(1);
+      if (memberParam) {
+        setTransferMemberCode(memberParam.toUpperCase());
+        setScanInfo(`Prefilled: ${memberParam} (Program ${programParam || "?"})`);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleQRScan = ({ programId: p, memberID }: { programId: number; memberID: string }) => {
     setProgramId(String(p));
