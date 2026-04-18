@@ -347,7 +347,7 @@ export default function ReportsPage() {
 
   return (
     <Box sx={{ px: { xs: 1, sm: 0 } }}>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1 }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1.5, mb: 1 }}>
         <Typography variant="h4" sx={{ fontSize: { xs: "1.5rem", sm: "2.125rem" } }}>Reports</Typography>
         {programLogoUrl && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -355,7 +355,7 @@ export default function ReportsPage() {
             src={programLogoUrl}
             alt={selectedProgram?.name || `Program ${resolvedProgramId}`}
             title={selectedProgram?.name || `Program ${resolvedProgramId}`}
-            style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }}
+            style={{ height: 40, maxWidth: 160, width: "auto", objectFit: "contain", borderRadius: 6 }}
           />
         )}
       </Box>
@@ -419,6 +419,7 @@ export default function ReportsPage() {
                 onClick={handleGenerate}
                 fullWidth
                 color={loading ? "error" : "primary"}
+                disabled={!loading && resolvedProgramId === 0}
               >
                 {loading ? "Cancel" : "Generate Report"}
               </Button>
@@ -683,10 +684,22 @@ export default function ReportsPage() {
                   const senderCode = row.memberCode || walletCodeMap[row.wallet.toLowerCase()] || "";
                   const recipientCode = row.toWallet ? walletCodeMap[row.toWallet.toLowerCase()] || "" : "";
                   const isTransferRow = row.type === "Transfer" || row.type === "TransferToParent";
-                  // For transfers show both sides ("sender → recipient"); otherwise just sender.
-                  const code = isTransferRow && row.toWallet
-                    ? `${senderCode || shortenAddress(row.wallet)} → ${recipientCode || shortenAddress(row.toWallet)}`
-                    : (senderCode || "-");
+                  // For transfers always show both sides ("sender → recipient"). When the full
+                  // recipient address is missing (e.g. events loaded via the subgraph, which does
+                  // not expose the `to` field), fall back to the truncated address prefix already
+                  // embedded in `detail` (parser format: "…→ 0xabcd1234…").
+                  let recipientDisplay = "";
+                  if (recipientCode) {
+                    recipientDisplay = recipientCode;
+                  } else if (row.toWallet) {
+                    recipientDisplay = shortenAddress(row.toWallet);
+                  } else if (isTransferRow && row.detail) {
+                    const m = row.detail.match(/→\s*(0x[a-fA-F0-9]+)/);
+                    if (m) recipientDisplay = `${m[1]}…`;
+                  }
+                  const code = isTransferRow && recipientDisplay
+                    ? `${senderCode || shortenAddress(row.wallet)} → ${recipientDisplay}`
+                    : (senderCode || (row.wallet ? shortenAddress(row.wallet) : "-"));
                   // Prefer event-derived names (work per-program, no program selection required),
                   // then the live getRewardTypes/getSubTypes query (when a program is selected),
                   // then the numeric fallback.
