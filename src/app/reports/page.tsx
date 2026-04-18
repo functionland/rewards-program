@@ -97,6 +97,11 @@ export default function ReportsPage() {
   const programDropdownFailed = programCountError || (programCount > 0 && programsMulticallError);
   const programDropdownAvailable = !programDropdownFailed && programOptions.length > 0;
   const selectedProgramOption = programOptions.find(o => o.id === resolvedProgramId) || null;
+  const programCodeById = useMemo(() => {
+    const map: Record<number, string> = {};
+    for (const p of programOptions) map[p.id] = p.code;
+    return map;
+  }, [programOptions]);
   const { data: rewardTypesData } = useRewardTypes(resolvedProgramId);
   const { data: selectedProgram } = useProgram(resolvedProgramId);
   const { data: selectedProgramLogoCID } = useProgramLogo(resolvedProgramId);
@@ -264,6 +269,19 @@ export default function ReportsPage() {
     }
     return map;
   }, [events]);
+
+  // Secondary lookup keyed on the 10-char address prefix. Used when only a
+  // truncated recipient ("→ 0xabcd1234…") is available from the detail string
+  // — e.g. Transfer events loaded via the subgraph, whose schema does not
+  // expose the full `to` address. Prefix collisions at 40 bits are effectively
+  // impossible for this dataset size.
+  const walletPrefixCodeMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const [wallet, code] of Object.entries(walletCodeMap)) {
+      map[wallet.slice(0, 10).toLowerCase()] = code;
+    }
+    return map;
+  }, [walletCodeMap]);
 
   // Leaderboard computation
   const leaderboardData = useMemo(() => {
@@ -695,7 +713,10 @@ export default function ReportsPage() {
                     recipientDisplay = shortenAddress(row.toWallet);
                   } else if (isTransferRow && row.detail) {
                     const m = row.detail.match(/→\s*(0x[a-fA-F0-9]+)/);
-                    if (m) recipientDisplay = `${m[1]}…`;
+                    if (m) {
+                      const prefix = m[1].toLowerCase();
+                      recipientDisplay = walletPrefixCodeMap[prefix] || `${m[1]}…`;
+                    }
                   }
                   const code = isTransferRow && recipientDisplay
                     ? `${senderCode || shortenAddress(row.wallet)} → ${recipientDisplay}`
@@ -723,7 +744,11 @@ export default function ReportsPage() {
                         sx={{ fontSize: { xs: "0.7rem", sm: "0.8125rem" }, height: { xs: 22, sm: 24 } }}
                       />
                     </TableCell>
-                    <TableCell>{row.programId}</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>
+                      {programCodeById[row.programId]
+                        ? `${programCodeById[row.programId]} (${row.programId})`
+                        : row.programId}
+                    </TableCell>
                     <TableCell sx={{ fontFamily: "monospace", fontSize: { xs: "0.75rem", sm: "0.85rem" } }}>
                       {row.wallet ? shortenAddress(row.wallet) : "-"}
                     </TableCell>
