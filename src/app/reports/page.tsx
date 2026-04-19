@@ -707,6 +707,10 @@ export default function ReportsPage() {
             </Stack>
           </Box>
 
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", textAlign: "right", mb: 0.5 }}>
+            Powered by FxFiles, Functionland
+          </Typography>
+
           {/* Leaderboard table */}
           {leaderboardTop > 0 ? (
           <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
