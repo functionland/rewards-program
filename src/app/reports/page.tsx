@@ -337,6 +337,18 @@ export default function ReportsPage() {
     return map;
   }, [combinedWalletCodeMap]);
 
+  // Prefix → full address map, used to recover the recipient wallet from
+  // subgraph-loaded Transfer events whose detail carries only "→ 0xabcd1234…".
+  // Without this, leaderboard credits for transfer recipients are dropped for
+  // any event that arrived via the subgraph instead of RPC.
+  const walletPrefixAddressMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const wallet of Object.keys(combinedWalletCodeMap)) {
+      map[wallet.slice(0, 10).toLowerCase()] = wallet;
+    }
+    return map;
+  }, [combinedWalletCodeMap]);
+
   // Leaderboard computation
   const leaderboardData = useMemo(() => {
     if (leaderboardTop === 0 || events.length === 0) return [];
@@ -362,9 +374,18 @@ export default function ReportsPage() {
       if (e.type === "Deposit" && matchesRewardFilter(e)) {
         const w = e.wallet.toLowerCase();
         totals[w] = (totals[w] || BigInt(0)) + e.amount;
-      } else if (e.type === "Transfer" && e.toWallet && matchesRewardFilter(e)) {
-        const w = e.toWallet.toLowerCase();
-        totals[w] = (totals[w] || BigInt(0)) + e.amount;
+      } else if (e.type === "Transfer" && matchesRewardFilter(e)) {
+        // toWallet is authoritative when present (RPC path). For subgraph-loaded
+        // events it's undefined, so recover the full address via the prefix map
+        // — otherwise the recipient gets no leaderboard credit.
+        let w = "";
+        if (e.toWallet) {
+          w = e.toWallet.toLowerCase();
+        } else if (e.detail) {
+          const m = e.detail.match(/→\s*(0x[a-fA-F0-9]+)/);
+          if (m) w = walletPrefixAddressMap[m[1].toLowerCase()] || "";
+        }
+        if (w) totals[w] = (totals[w] || BigInt(0)) + e.amount;
       }
     }
 
@@ -378,7 +399,7 @@ export default function ReportsPage() {
         joinTimestamp: walletJoinTimestamp[wallet] || 0,
         total,
       }));
-  }, [events, leaderboardTop, filterRewardType, combinedWalletCodeMap]);
+  }, [events, leaderboardTop, filterRewardType, combinedWalletCodeMap, walletPrefixAddressMap]);
 
   const formatTimestamp = (ts: number): string => {
     if (!ts) return "-";
