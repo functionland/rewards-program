@@ -158,10 +158,18 @@ export default function ReportsPage() {
   }
   if (resolvedMemberAddr) {
     // Match events where the member is either sender (wallet) or recipient (toWallet).
-    filteredEvents = filteredEvents.filter(e =>
-      e.wallet.toLowerCase() === resolvedMemberAddr ||
-      e.toWallet?.toLowerCase() === resolvedMemberAddr
-    );
+    // Subgraph-loaded Transfer events have no toWallet; they embed a truncated recipient
+    // address in detail ("→ 0xabcd1234…"), so also match against that prefix.
+    const memberPrefix = resolvedMemberAddr.slice(0, 10);
+    filteredEvents = filteredEvents.filter(e => {
+      if (e.wallet.toLowerCase() === resolvedMemberAddr) return true;
+      if (e.toWallet?.toLowerCase() === resolvedMemberAddr) return true;
+      if (!e.toWallet && e.detail) {
+        const m = e.detail.match(/→\s*(0x[a-fA-F0-9]+)/);
+        if (m && m[1].toLowerCase().startsWith(memberPrefix)) return true;
+      }
+      return false;
+    });
   }
   if (filterAmountMin) {
     try {
