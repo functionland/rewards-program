@@ -32,8 +32,10 @@ import { useEffect, useState } from "react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useHighestMemberRole } from "@/hooks/useHighestMemberRole";
 import { MemberRoleEnum } from "@/config/contracts";
+import pkg from "../../../package.json";
 
 export const DRAWER_WIDTH = 248;
+const APP_VERSION = pkg.version;
 
 type Persona = "guest" | "client" | "teamLeader" | "programAdmin" | "admin";
 
@@ -244,12 +246,24 @@ export function Sidebar({
         </List>
       </Box>
       <Divider />
-      <Box sx={{ px: 2.25, py: 1.5 }}>
+      <Box sx={{ px: 2.25, py: 1.5, display: "flex", flexDirection: "column", gap: 0.25 }}>
+        <Typography
+          variant="micro"
+          sx={{ color: "text.tertiary", display: "block" }}
+        >
+          Built in Fula, using FxFiles
+        </Typography>
         <Typography
           variant="micro"
           sx={{ color: "text.tertiary", display: "block" }}
         >
           Verified via The Graph · public
+        </Typography>
+        <Typography
+          variant="micro"
+          sx={{ color: "text.tertiary", display: "block", opacity: 0.7 }}
+        >
+          v{APP_VERSION}
         </Typography>
       </Box>
     </>

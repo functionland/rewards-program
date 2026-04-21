@@ -31,6 +31,7 @@ import PersonIcon from "@mui/icons-material/Person";
 import StorefrontIcon from "@mui/icons-material/Storefront";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import { useState } from "react";
+import { ClearCacheCard } from "@/components/help/ClearCacheCard";
 
 /* ------------------------------------------------------------------ */
 /*  Tiny helpers                                                       */
@@ -789,6 +790,8 @@ export default function HelpPage() {
           </Typography>
         </AccordionDetails>
       </Accordion>
+
+      <ClearCacheCard />
 
       <Divider sx={{ my: 3 }} />
       <Typography variant="caption" color="text.secondary" textAlign="center" display="block">

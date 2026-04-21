@@ -29,6 +29,7 @@ export type EventRow = {
   programId: number;
   wallet: string;        // Sender / subject of the event
   toWallet?: string;     // Recipient for Transfer / TransferToParent — enables filtering/display from recipient side
+  parent?: string;       // Parent wallet on MemberAdded — enables "users added by operator" queries
   amount: bigint;
   detail?: string;
   rewardType?: number;
@@ -182,7 +183,7 @@ function parseLog(log: { topics: Hex[]; data: Hex; blockNumber: bigint; transact
           wallet: String(a.wallet ?? ""), amount: BigInt(a.amount as bigint ?? 0) };
       case "MemberAdded":
         return { ...base, type: "MemberAdded", programId: Number(a.programId),
-          wallet: String(a.wallet ?? ""), amount: BigInt(0),
+          wallet: String(a.wallet ?? ""), parent: String(a.parent ?? ""), amount: BigInt(0),
           memberCode: hexToUtf8(String(a.memberID)),
           detail: `${ROLE_LABELS[Number(a.role)] || "Role" + a.role} / ${TYPE_LABELS[Number(a.memberType)] || "Type" + a.memberType} — ID: ${hexToUtf8(String(a.memberID))}` };
       case "ProgramAdminAssigned":

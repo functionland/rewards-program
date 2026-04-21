@@ -65,7 +65,11 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.npmjs.com)",
       "WebFetch(domain:docs.thegraph.academy)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(wait b9q51cwq2 *)",
+      "Bash(wait bvjrlfjml *)",
+      "Bash(wait b5l0tsv9k *)",
+      "Bash(wait b1q4i1sn4 *)"
     ]
   }
 }
