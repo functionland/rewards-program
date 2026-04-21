@@ -36,6 +36,7 @@ import { MemberRoleLabels, MemberRoleEnum, MemberTypeLabels, CONTRACTS, REWARDS_
 import { fromBytes8, fromBytes12, fromBytes16, toBytes12, shortenAddress, formatFula, isValidAddress, formatContractError, ipfsLogoUrl, parseCID } from "@/lib/utils";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
+import { ProgramMembersList } from "@/components/rewards/ProgramMembersList";
 
 function generateEditCode(): `0x${string}` {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
@@ -240,6 +241,9 @@ function ProgramDetail({ programId }: { programId: number }) {
   const { data: program, refetch: refetchProgram } = useProgram(programId);
   const { data: myBalance } = useMemberBalance(programId, address);
   const { data: transferLimit } = useTransferLimit(programId);
+  const detailSearchParams = useSearchParams();
+  const actionParam = detailSearchParams.get("action");
+  const memberParamFromUrl = detailSearchParams.get("member");
 
   // My member info (for parent detection)
   const { data: myMember } = useReadContract({
@@ -336,6 +340,24 @@ function ProgramDetail({ programId }: { programId: number }) {
   const [tokenTab, setTokenTab] = useState(0);
   const canTransferSub = isAdmin || isPA || role === MemberRoleEnum.TeamLeader;
   const isMember = role > 0 || isAdmin;
+
+  // Deep-link: ?action=transfer (+ optional &member=CODE) selects the
+  // "Transfer to Sub-Member" tab and prefills the member code. Only re-applies
+  // when the URL params themselves change, so a user can still switch tabs.
+  useEffect(() => {
+    if (actionParam === "transfer" && canTransferSub) {
+      setTokenTab(1);
+      if (memberParamFromUrl) {
+        setTransMemberCode(memberParamFromUrl.toUpperCase().slice(0, 12));
+      }
+    } else if (actionParam === "deposit") {
+      setTokenTab(0);
+    } else if (actionParam === "withdraw") {
+      setTokenTab(canTransferSub ? 3 : 2);
+    } else if (actionParam === "send-up" || actionParam === "parent") {
+      setTokenTab(canTransferSub ? 2 : 1);
+    }
+  }, [actionParam, memberParamFromUrl, canTransferSub]);
 
   // Resolve member code → storage key for transfers
   const transMemberCodeBytes = transMemberCode.length > 0 ? toBytes12(transMemberCode) : undefined;
@@ -760,13 +782,8 @@ function ProgramDetail({ programId }: { programId: number }) {
         </Paper>
       )}
 
-      {/* Members info */}
-      <Paper sx={{ p: 2 }}>
-        <Typography variant="h6" gutterBottom>Members</Typography>
-        <Alert severity="info">
-          Use the <Link href="/members" style={{ color: "#6366f1" }}>Members search page</Link> to look up and manage specific members by ID.
-        </Alert>
-      </Paper>
+      {/* Members list */}
+      <ProgramMembersList programId={programId} canManage={canTransferSub} />
 
       {/* Assign ProgramAdmin Dialog */}
       <Dialog open={openPA} onClose={() => setOpenPA(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>

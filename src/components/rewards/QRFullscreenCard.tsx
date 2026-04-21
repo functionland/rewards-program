@@ -14,6 +14,8 @@ import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { useProgramLogo } from "@/hooks/useRewardsProgram";
+import { ipfsLogoUrl } from "@/lib/utils";
 
 export type QRMode = "receive" | "redeem";
 
@@ -61,6 +63,17 @@ export function QRFullscreenCard({
       buildUrl({ origin, mode, memberID, programId, claimCode }),
     [origin, mode, memberID, programId, claimCode],
   );
+
+  const { data: logoCID } = useProgramLogo(programId);
+  const logoUrl = logoCID ? ipfsLogoUrl(logoCID as string) : null;
+  const imageSettings = logoUrl
+    ? {
+        src: logoUrl,
+        height: 52,
+        width: 52,
+        excavate: true,
+      }
+    : undefined;
 
   const isRedeem = mode === "redeem";
   const missingClaim = isRedeem && !claimCode;
@@ -156,10 +169,11 @@ export function QRFullscreenCard({
                 <QRCodeSVG
                   value={url}
                   size={260}
-                  level="M"
+                  level={logoUrl ? "H" : "M"}
                   marginSize={1}
                   bgColor="#ffffff"
                   fgColor="#0d0d12"
+                  imageSettings={imageSettings}
                 />
               </Box>
 
@@ -212,6 +226,24 @@ export function QRFullscreenCard({
               >
                 {copied ? "Copied!" : "Copy link"}
               </Button>
+
+              <Typography
+                component="a"
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  color: "accent.main",
+                  fontSize: 12,
+                  lineHeight: 1.4,
+                  wordBreak: "break-all",
+                  textDecoration: "underline",
+                  maxWidth: 560,
+                  fontFamily: "var(--font-mono, monospace)",
+                }}
+              >
+                {url}
+              </Typography>
             </>
           )}
         </Box>

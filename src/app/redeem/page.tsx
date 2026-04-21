@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useCallback, useMemo } from "react";
 import { Box, Stack, Typography } from "@mui/material";
 import SwapVertIcon from "@mui/icons-material/SwapVert";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
@@ -14,6 +14,7 @@ import { SendSubBranch } from "@/components/redeem/SendSubBranch";
 import { SendUpBranch } from "@/components/redeem/SendUpBranch";
 import { DepositBranch } from "@/components/redeem/DepositBranch";
 import { WithdrawBranch } from "@/components/redeem/WithdrawBranch";
+import { QRScannerButton } from "@/components/common/QRScannerButton";
 
 type ActionKey = "redeem" | "send-sub" | "send-up" | "deposit" | "withdraw";
 
@@ -92,6 +93,22 @@ function RedeemContent() {
     router.replace(`/redeem?${current.toString()}`);
   };
 
+  const onQRScan = useCallback(
+    ({ programId, memberID, claim, code }: { programId: number; memberID: string; claim?: string; code?: string }) => {
+      const next = new URLSearchParams();
+      next.set("member", memberID);
+      next.set("claim", claim || String(programId));
+      if (code) {
+        next.set("code", code);
+        next.set("action", "redeem");
+      } else {
+        next.set("action", "send-sub");
+      }
+      router.replace(`/redeem?${next.toString()}`);
+    },
+    [router],
+  );
+
   const body = useMemo(() => {
     switch (action) {
       case "redeem":
@@ -115,18 +132,34 @@ function RedeemContent() {
 
   return (
     <Stack spacing={{ xs: 1.5, sm: 2 }}>
-      <Box>
-        <Typography
-          variant="serif"
-          sx={{ fontSize: { xs: 22, sm: 28 }, display: "block", lineHeight: 1.15 }}
-        >
-          Move tokens,
-        </Typography>
-        <Typography
-          sx={{ fontWeight: 700, fontSize: { xs: 22, sm: 28 }, letterSpacing: "-0.01em" }}
-        >
-          pick a direction.
-        </Typography>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "space-between",
+          gap: 2,
+          flexWrap: "wrap",
+        }}
+      >
+        <Box>
+          <Typography
+            variant="serif"
+            sx={{ fontSize: { xs: 22, sm: 28 }, display: "block", lineHeight: 1.15 }}
+          >
+            Move tokens,
+          </Typography>
+          <Typography
+            sx={{ fontWeight: 700, fontSize: { xs: 22, sm: 28 }, letterSpacing: "-0.01em" }}
+          >
+            pick a direction.
+          </Typography>
+        </Box>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+          <Typography variant="micro" sx={{ color: "text.tertiary" }}>
+            Scan a member QR
+          </Typography>
+          <QRScannerButton tooltip="Scan a member QR to prefill the form" onScan={onQRScan} />
+        </Box>
       </Box>
 
       <Box

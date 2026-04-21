@@ -44,134 +44,94 @@ type NavItem = {
   activeFor?: (pathname: string) => boolean;
 };
 
-type NavSection = {
-  key: "operator" | "member" | "support";
-  title?: string;
-  items: NavItem[];
-};
-
 function startsWith(prefix: string) {
   return (pathname: string) =>
     pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
-function buildSections(persona: Persona): NavSection[] {
-  const memberSections: NavSection[] = [
-    {
-      key: "member",
-      title: "My rewards",
-      items: [
-        {
-          label: "Home",
-          href: "/me",
-          icon: StarBorderOutlinedIcon,
-          activeFor: (p) => p === "/me",
-        },
-        {
-          label: "Activity",
-          href: "/me/activity",
-          icon: TimelineOutlinedIcon,
-          activeFor: startsWith("/me/activity"),
-        },
-        {
-          label: "Programs",
-          href: "/programs",
-          icon: GroupWorkOutlinedIcon,
-          activeFor: startsWith("/programs"),
-        },
-        {
-          label: "Send & receive",
-          href: "/redeem",
-          icon: SwapHorizOutlinedIcon,
-          activeFor: startsWith("/redeem"),
-        },
-      ],
-    },
-  ];
-
-  const operatorSections = (subset: "leader" | "admin"): NavSection[] => {
-    const items: NavItem[] = [];
-    if (subset === "admin") {
-      items.push({
-        label: "Overview",
-        href: "/",
-        icon: SpaceDashboardOutlinedIcon,
-        activeFor: (p) => p === "/",
-      });
-    }
-    items.push({
-      label: "Redeem / Transfer",
-      href: "/redeem",
-      icon: SwapHorizOutlinedIcon,
-      activeFor: startsWith("/redeem"),
-    });
-    if (subset === "admin") {
-      items.push({
-        label: "Programs",
-        href: "/programs",
-        icon: GroupWorkOutlinedIcon,
-        activeFor: startsWith("/programs"),
-      });
-      items.push({
-        label: "Members",
-        href: "/members",
-        icon: PeopleAltOutlinedIcon,
-        activeFor: (p) => p === "/members" || p.startsWith("/members/"),
-      });
-      items.push({
-        label: "Reports",
-        href: "/reports",
-        icon: AssessmentOutlinedIcon,
-        activeFor: startsWith("/reports"),
-      });
-    } else {
-      items.push({
-        label: "My team",
-        href: "/members?scope=mine",
-        icon: GroupsOutlinedIcon,
-        activeFor: (p) => p === "/members" || p.startsWith("/members/"),
-      });
-    }
-    return [{ key: "operator", title: "Operator", items }];
+// One flat menu. The set of items changes by role; items themselves don't move
+// between sections. This keeps the sidebar readable at a glance regardless of
+// whether the user is a pure member or also an operator.
+function buildItems(persona: Persona): NavItem[] {
+  const home: NavItem = {
+    label: "Home",
+    href: "/me",
+    icon: StarBorderOutlinedIcon,
+    activeFor: (p) => p === "/me",
   };
-
-  const support: NavSection = {
-    key: "support",
-    items: [
-      { label: "Help", href: "/help", icon: HelpOutlineIcon, activeFor: startsWith("/help") },
-    ],
+  const activity: NavItem = {
+    label: "Activity",
+    href: "/me/activity",
+    icon: TimelineOutlinedIcon,
+    activeFor: startsWith("/me/activity"),
+  };
+  const programs: NavItem = {
+    label: "Programs",
+    href: "/programs",
+    icon: GroupWorkOutlinedIcon,
+    activeFor: startsWith("/programs"),
+  };
+  const sendReceive: NavItem = {
+    label: "Send & receive",
+    href: "/redeem",
+    icon: SwapHorizOutlinedIcon,
+    activeFor: startsWith("/redeem"),
+  };
+  const help: NavItem = {
+    label: "Help",
+    href: "/help",
+    icon: HelpOutlineIcon,
+    activeFor: startsWith("/help"),
+  };
+  const overview: NavItem = {
+    label: "Overview",
+    href: "/",
+    icon: SpaceDashboardOutlinedIcon,
+    activeFor: (p) => p === "/",
+  };
+  const members: NavItem = {
+    label: "Members",
+    href: "/members",
+    icon: PeopleAltOutlinedIcon,
+    activeFor: (p) => p === "/members" || p.startsWith("/members/"),
+  };
+  const reports: NavItem = {
+    label: "Reports",
+    href: "/reports",
+    icon: AssessmentOutlinedIcon,
+    activeFor: startsWith("/reports"),
+  };
+  const myTeam: NavItem = {
+    label: "My team",
+    href: "/members?scope=mine",
+    icon: GroupsOutlinedIcon,
+    activeFor: (p) => p === "/members" || p.startsWith("/members/"),
   };
 
   switch (persona) {
     case "guest":
       return [
         {
-          key: "member",
-          title: "Explore",
-          items: [
-            {
-              label: "My rewards",
-              href: "/balance",
-              icon: ReceiptLongOutlinedIcon,
-              activeFor: startsWith("/balance"),
-            },
-            {
-              label: "Browse programs",
-              href: "/programs",
-              icon: GroupWorkOutlinedIcon,
-              activeFor: startsWith("/programs"),
-            },
-          ],
+          label: "My rewards",
+          href: "/balance",
+          icon: ReceiptLongOutlinedIcon,
+          activeFor: startsWith("/balance"),
         },
-        support,
+        {
+          label: "Browse programs",
+          href: "/programs",
+          icon: GroupWorkOutlinedIcon,
+          activeFor: startsWith("/programs"),
+        },
+        help,
       ];
     case "client":
-      return [...memberSections, support];
+      return [home, activity, programs, sendReceive, help];
     case "teamLeader":
-      return [...operatorSections("leader"), ...memberSections, support];
+      return [home, activity, programs, myTeam, sendReceive, help];
     case "programAdmin":
     case "admin":
-      return [...operatorSections("admin"), ...memberSections, support];
+      return [overview, home, activity, programs, members, reports, sendReceive, help];
   }
 }
 
@@ -200,7 +160,7 @@ export function Sidebar({
     else persona = "guest";
   }
 
-  const sections = buildSections(persona);
+  const items = buildItems(persona);
 
   const content = (
     <>
@@ -252,58 +212,36 @@ export function Sidebar({
           py: 1,
         }}
       >
-        {sections.map((section, sIdx) => {
-          const isLast = sIdx === sections.length - 1;
-          return (
-            <Box key={section.key} sx={{ mt: sIdx === 0 ? 0 : 1 }}>
-              {section.title && (
-                <Typography
-                  variant="micro"
-                  sx={{
-                    px: 2.5,
-                    pt: 1.25,
-                    pb: 0.5,
-                    color: "text.tertiary",
-                    display: "block",
-                  }}
+        <List disablePadding>
+          {items.map((item) => {
+            const Icon = item.icon;
+            const selected = item.activeFor
+              ? item.activeFor(pathname)
+              : pathname === item.href;
+            return (
+              <ListItem key={item.href} disablePadding>
+                <ListItemButton
+                  component={Link}
+                  href={item.href}
+                  selected={selected}
+                  onClick={isMobile ? onClose : undefined}
+                  sx={{ py: 0.75 }}
                 >
-                  {section.title}
-                </Typography>
-              )}
-              <List disablePadding>
-                {section.items.map((item) => {
-                  const Icon = item.icon;
-                  const selected = item.activeFor
-                    ? item.activeFor(pathname)
-                    : pathname === item.href;
-                  return (
-                    <ListItem key={item.href} disablePadding>
-                      <ListItemButton
-                        component={Link}
-                        href={item.href}
-                        selected={selected}
-                        onClick={isMobile ? onClose : undefined}
-                        sx={{ py: 0.75 }}
-                      >
-                        <ListItemIcon sx={{ minWidth: 34, color: "text.secondary" }}>
-                          <Icon sx={{ fontSize: 20 }} />
-                        </ListItemIcon>
-                        <ListItemText
-                          primary={item.label}
-                          primaryTypographyProps={{
-                            fontSize: 14,
-                            fontWeight: selected ? 600 : 500,
-                          }}
-                        />
-                      </ListItemButton>
-                    </ListItem>
-                  );
-                })}
-              </List>
-              {!isLast && <Box sx={{ mt: 0.75 }} />}
-            </Box>
-          );
-        })}
+                  <ListItemIcon sx={{ minWidth: 34, color: "text.secondary" }}>
+                    <Icon sx={{ fontSize: 20 }} />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={item.label}
+                    primaryTypographyProps={{
+                      fontSize: 14,
+                      fontWeight: selected ? 600 : 500,
+                    }}
+                  />
+                </ListItemButton>
+              </ListItem>
+            );
+          })}
+        </List>
       </Box>
       <Divider />
       <Box sx={{ px: 2.25, py: 1.5 }}>

@@ -28,13 +28,18 @@ function GuestSplitScreen() {
   const [tab, setTab] = useState(0);
   const [memberCode, setMemberCode] = useState("");
   const [program, setProgram] = useState("");
+  const [claimCode, setClaimCode] = useState("");
 
   const href = useMemo(() => {
     if (!memberCode.trim()) return "/balance";
     const params = new URLSearchParams({ member: memberCode.trim().toUpperCase() });
     if (program.trim()) params.set("claim", program.trim());
+    if (claimCode.trim()) {
+      const raw = claimCode.trim();
+      params.set("code", raw.startsWith("0x") ? raw : `0x${raw}`);
+    }
     return `/balance?${params.toString()}`;
-  }, [memberCode, program]);
+  }, [memberCode, program, claimCode]);
 
   return (
     <Box
@@ -141,10 +146,21 @@ function GuestSplitScreen() {
               }}
             />
             <TextField
-              label="Program ID (optional)"
+              label="Program ID"
               placeholder="e.g. 1"
               value={program}
               onChange={(e) => setProgram(e.target.value.replace(/[^0-9]/g, ""))}
+              helperText="Required to show your balance."
+            />
+            <TextField
+              label="Claim code (optional)"
+              placeholder="0x…"
+              value={claimCode}
+              onChange={(e) => setClaimCode(e.target.value)}
+              helperText="Unlocks your redeem QR so a clerk can cash you out."
+              InputProps={{
+                sx: { fontFamily: "var(--font-mono)", fontSize: 13 },
+              }}
             />
             <Button
               component={Link}
@@ -153,7 +169,7 @@ function GuestSplitScreen() {
               color="primary"
               disabled={!memberCode.trim()}
             >
-              Look up balance
+              Open my rewards
             </Button>
             <Typography variant="micro" sx={{ color: "text.tertiary" }}>
               No account required. Public data only.

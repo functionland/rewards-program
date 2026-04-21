@@ -7,6 +7,8 @@ import CameraAltIcon from "@mui/icons-material/CameraAlt";
 interface QRScanResult {
   programId: number;
   memberID: string;
+  claim?: string;
+  code?: string;
 }
 
 interface QRScannerButtonProps {
@@ -14,16 +16,27 @@ interface QRScannerButtonProps {
   tooltip?: string;
 }
 
-// Accept both the current transfer-link URL format (/tokens?program=X&member=CODE)
-// and the legacy JSON payload ({p,m}) so older printed QRs still work.
+// Accept (a) /redeem?member=X&claim=Y&code=Z (redeem QR with auth secret),
+// (b) /tokens?program=X&member=CODE (receive/transfer QR),
+// (c) /redeem?program=X&member=CODE&action=... (send-sub QR),
+// (d) legacy JSON {p,m}. Older printed QRs keep working.
 function parseQRCode(decoded: string): QRScanResult | null {
   const trimmed = decoded.trim();
   if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith("/")) {
     try {
       const url = new URL(trimmed, typeof window !== "undefined" ? window.location.origin : "http://localhost");
-      const program = Number(url.searchParams.get("program"));
       const member = url.searchParams.get("member");
-      if (program > 0 && member) return { programId: program, memberID: member };
+      const claim = url.searchParams.get("claim");
+      const code = url.searchParams.get("code");
+      const program = Number(url.searchParams.get("program") || claim);
+      if (program > 0 && member) {
+        return {
+          programId: program,
+          memberID: member,
+          ...(claim ? { claim } : {}),
+          ...(code ? { code } : {}),
+        };
+      }
     } catch { /* fall through to JSON */ }
   }
   try {

@@ -1,11 +1,12 @@
 "use client";
 
-import { Box, Paper, Skeleton, Typography } from "@mui/material";
+import { Box, Paper, Skeleton, Tooltip, Typography } from "@mui/material";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import TimelapseOutlinedIcon from "@mui/icons-material/TimelapseOutlined";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import type { ReactNode } from "react";
 import { formatFula } from "@/lib/utils";
 
@@ -15,7 +16,7 @@ export function BalanceHero({
   available,
   unlocking,
   locked,
-  title = "My rewards",
+  title = "Redeemable",
   subtitle,
   usdEstimate,
   momPercent,
@@ -135,8 +136,9 @@ export function BalanceHero({
         }}
       >
         <BreakdownCell
-          icon={<CheckCircleOutlineIcon sx={{ fontSize: 15 }} />}
-          label="Available"
+          icon={<AccountBalanceWalletOutlinedIcon sx={{ fontSize: 15 }} />}
+          label="Withdrawable"
+          hint="Can move to your wallet now, or redeem to your parent."
           value={available}
           tone="success.main"
           loading={loading}
@@ -144,6 +146,7 @@ export function BalanceHero({
         <BreakdownCell
           icon={<TimelapseOutlinedIcon sx={{ fontSize: 15 }} />}
           label="Unlocking"
+          hint="Time-locked. Becomes withdrawable after the timer expires. Still redeemable to your parent anytime."
           value={unlocking}
           tone="warning.main"
           loading={loading}
@@ -151,6 +154,7 @@ export function BalanceHero({
         <BreakdownCell
           icon={<LockOutlinedIcon sx={{ fontSize: 15 }} />}
           label="Locked"
+          hint="Permanently locked — never withdrawable to a wallet, but still redeemable to your parent."
           value={locked}
           tone="text.tertiary"
           loading={loading}
@@ -163,12 +167,14 @@ export function BalanceHero({
 function BreakdownCell({
   icon,
   label,
+  hint,
   value,
   tone,
   loading,
 }: {
   icon: ReactNode;
   label: string;
+  hint?: string;
   value: bigint;
   tone: string;
   loading?: boolean;
@@ -190,6 +196,13 @@ function BreakdownCell({
         >
           {label}
         </Typography>
+        {hint && (
+          <Tooltip title={hint} arrow enterTouchDelay={0} leaveTouchDelay={3000}>
+            <InfoOutlinedIcon
+              sx={{ fontSize: 13, color: "text.tertiary", cursor: "help" }}
+            />
+          </Tooltip>
+        )}
       </Box>
       {loading ? (
         <Skeleton variant="text" width={70} height={22} />

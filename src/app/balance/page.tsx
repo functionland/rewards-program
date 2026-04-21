@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import {
-  Typography, Box, Paper, Grid, Table, TableBody, TableCell,
+  Typography, Box, Paper, Grid, Stack, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, TextField, Button, Alert,
   CircularProgress, Select, MenuItem, FormControl, InputLabel,
   useMediaQuery, useTheme, Tabs, Tab,
@@ -11,15 +11,18 @@ import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { useSearchParams } from "next/navigation";
 import { zeroAddress } from "viem";
 import { CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
-import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatContractError, fromBytes16, ipfsLogoUrl } from "@/lib/utils";
+import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatContractError, fromBytes16 } from "@/lib/utils";
 import { virtualAddr } from "@/lib/memberKey";
-import { QRCodeSVG } from "qrcode.react";
-import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useDepositTokens, useRewardTypes, useTransferLimit, useClaimMember, useProgramLogo } from "@/hooks/useRewardsProgram";
+import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useDepositTokens, useRewardTypes, useTransferLimit, useClaimMember } from "@/hooks/useRewardsProgram";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
-import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
 import { QRScannerButton } from "@/components/common/QRScannerButton";
 import { RoleChip } from "@/components/rewards/RoleChip";
 import { MemberTypeChip } from "@/components/rewards/MemberTypeChip";
+import { BalanceHero } from "@/components/rewards/BalanceHero";
+import { QuickActionCard } from "@/components/rewards/QuickActionCard";
+import { QRFullscreenCard, type QRMode } from "@/components/rewards/QRFullscreenCard";
+import QrCodeIcon from "@mui/icons-material/QrCode";
+import QrCode2Icon from "@mui/icons-material/QrCode2";
 
 /* -- Per-program membership row -- */
 
@@ -71,7 +74,7 @@ function MemberProgramCard({ memberID, programId, isMobile }: { memberID: string
         </Box>
         <Box sx={{ display: "flex", gap: 2, mb: 1 }}>
           <Box sx={{ flex: 1, textAlign: "center" }}>
-            <Typography variant="caption" color="text.secondary" display="block">Available</Typography>
+            <Typography variant="caption" color="text.secondary" display="block">Withdrawable</Typography>
             <Typography variant="body2" sx={{ color: "success.main", fontWeight: 600 }}>
               {balance ? formatFula(balance[0]) : "-"}
             </Typography>
@@ -83,16 +86,15 @@ function MemberProgramCard({ memberID, programId, isMobile }: { memberID: string
             </Typography>
           </Box>
           <Box sx={{ flex: 1, textAlign: "center" }}>
-            <Typography variant="caption" color="text.secondary" display="block">Time-Locked</Typography>
+            <Typography variant="caption" color="text.secondary" display="block">Unlocking</Typography>
             <Typography variant="body2" sx={{ color: "warning.main", fontWeight: 600 }}>
               {balance ? formatFula(balance[2]) : "-"}
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <Typography variant="caption" color="text.secondary">Parent: {shortenAddress(member.parent)}</Typography>
-          <QRCodeDisplay programId={programId} memberID={memberID} programName={programName} size={80} />
-        </Box>
+        <Typography variant="caption" color="text.secondary">
+          Parent: {shortenAddress(member.parent)}
+        </Typography>
       </Paper>
     );
   }
@@ -112,9 +114,6 @@ function MemberProgramCard({ memberID, programId, isMobile }: { memberID: string
       <TableCell sx={{ color: "error.main" }}>{balance ? formatFula(balance[1]) : "-"}</TableCell>
       <TableCell sx={{ color: "warning.main" }}>{balance ? formatFula(balance[2]) : "-"}</TableCell>
       <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>{member.active ? "Active" : "Inactive"}</TableCell>
-      <TableCell>
-        <QRCodeDisplay programId={programId} memberID={memberID} programName={programName} size={120} />
-      </TableCell>
     </TableRow>
   );
 }
@@ -350,6 +349,61 @@ function BalanceContent() {
     query: { enabled: !!searchID && count > 0 },
   });
 
+  // Build balance-fetch contracts for every active membership so we can sum
+  // the searched member's balance across all their programs and render it in
+  // the top BalanceHero. Mirrors what /me does via useAggregatedMemberBalance,
+  // but keyed off the walletless multicall shape here.
+  const balanceContracts = useMemo(() => {
+    if (!multicallResults || !searchID) return [];
+    const out: Array<{
+      address: typeof CONTRACTS.rewardsProgram;
+      abi: typeof REWARDS_PROGRAM_ABI;
+      functionName: "getBalance";
+      args: readonly [number, `0x${string}`];
+    }> = [];
+    multicallResults.forEach((result, idx) => {
+      if (result.status === "success" && result.result) {
+        const member = result.result as { active: boolean; wallet: `0x${string}` };
+        if (member.active) {
+          const programId = idx + 1;
+          const key =
+            member.wallet && member.wallet !== zeroAddress
+              ? member.wallet
+              : virtualAddr(searchID, programId);
+          out.push({
+            address: CONTRACTS.rewardsProgram,
+            abi: REWARDS_PROGRAM_ABI,
+            functionName: "getBalance",
+            args: [programId, key] as const,
+          });
+        }
+      }
+    });
+    return out;
+  }, [multicallResults, searchID]);
+
+  const { data: balanceResults } = useReadContracts({
+    contracts: balanceContracts.length > 0 ? balanceContracts : undefined,
+    query: { enabled: balanceContracts.length > 0 },
+  });
+
+  const aggregate = useMemo(() => {
+    let available = BigInt(0);
+    let locked = BigInt(0);
+    let timeLocked = BigInt(0);
+    if (balanceResults) {
+      for (const r of balanceResults) {
+        if (r.status === "success" && r.result) {
+          const tuple = r.result as readonly [bigint, bigint, bigint];
+          available += tuple[0];
+          locked += tuple[1];
+          timeLocked += tuple[2];
+        }
+      }
+    }
+    return { available, locked, timeLocked, programCount: balanceContracts.length };
+  }, [balanceResults, balanceContracts.length]);
+
   // After claim, refetch so OwnerActions appears without manual refresh
   const [claimedProgramId, setClaimedProgramId] = useState<number | null>(null);
   const handleClaimed = useCallback((programId: number) => {
@@ -393,13 +447,17 @@ function BalanceContent() {
   };
 
   const claimProgramId = claimParam ? parseInt(claimParam) : 0;
-  const { data: logoCID } = useProgramLogo(claimProgramId);
-  const logoUrl = logoCID ? ipfsLogoUrl(logoCID as string) : "";
 
-  const [redeemQrUrl, setRedeemQrUrl] = useState("");
+  // Persist the claim code so returning visitors can re-open the redeem QR
+  // after closing the browser tab.
   useEffect(() => {
-    if (typeof window !== "undefined" && searchID && codeParam && claimParam && memberExists) {
-      setRedeemQrUrl(`${window.location.origin}/redeem?member=${encodeURIComponent(searchID)}&claim=${encodeURIComponent(claimParam)}&code=${encodeURIComponent(codeParam)}`);
+    if (
+      typeof window !== "undefined" &&
+      searchID &&
+      codeParam &&
+      claimProgramId &&
+      memberExists
+    ) {
       try {
         window.localStorage.setItem(
           `fula.rewards.claimCode.${claimProgramId}.${searchID}`,
@@ -408,114 +466,175 @@ function BalanceContent() {
       } catch {
         // localStorage may be unavailable (private mode, quota, etc.)
       }
-    } else {
-      setRedeemQrUrl("");
     }
-  }, [searchID, codeParam, claimParam, memberExists, claimProgramId]);
+  }, [searchID, codeParam, claimProgramId, memberExists]);
+
+  // Fullscreen QR state — opened by clicking a tile.
+  const [qrMode, setQrMode] = useState<QRMode | null>(null);
+  const openQR = (mode: QRMode) => setQrMode(mode);
+  const closeQR = () => setQrMode(null);
+
+  // A program ID to anchor the QR tiles against. Prefer the explicit `?claim=`
+  // param; otherwise pick the first active membership we discovered.
+  const activeProgramId = useMemo(() => {
+    if (claimProgramId > 0) return claimProgramId;
+    if (!multicallResults) return 0;
+    for (let i = 0; i < multicallResults.length; i++) {
+      const r = multicallResults[i];
+      if (r.status === "success" && r.result) {
+        const m = r.result as { active: boolean };
+        if (m.active) return i + 1;
+      }
+    }
+    return 0;
+  }, [claimProgramId, multicallResults]);
+
+  const hasClaimCode = !!codeParam;
+
+  const heroSubtitle = memberExists
+    ? `${searchID} · ${aggregate.programCount} program${aggregate.programCount === 1 ? "" : "s"}`
+    : searchID
+      ? `${searchID} · not found`
+      : "Look up a member to see their balance";
 
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom>Member Balance</Typography>
+    <Stack spacing={{ xs: 1.5, sm: 2 }}>
+      <Box>
+        <Typography
+          variant="serif"
+          sx={{ fontSize: { xs: 22, sm: 28 }, display: "block", lineHeight: 1.15 }}
+        >
+          My rewards,
+        </Typography>
+        <Typography
+          sx={{ fontWeight: 700, fontSize: { xs: 22, sm: 28 }, letterSpacing: "-0.01em" }}
+        >
+          in one place.
+        </Typography>
+      </Box>
 
-      {redeemQrUrl && (
-        <Paper sx={{ p: 2, mb: 3, textAlign: "center" }}>
-          {logoUrl && (
-            <Box
-              component="img"
-              src={logoUrl}
-              alt="Program logo"
-              sx={{ width: 48, height: 48, borderRadius: 1, objectFit: "contain", mb: 1 }}
-            />
-          )}
-          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-            Scan to redeem rewards
-          </Typography>
-          <QRCodeSVG
-            value={redeemQrUrl}
-            size={isMobile ? 220 : 280}
-            level={logoUrl ? "H" : "M"}
-            {...(logoUrl ? {
-              imageSettings: {
-                src: logoUrl,
-                height: isMobile ? 55 : 70,
-                width: isMobile ? 55 : 70,
-                excavate: true,
-              }
-            } : {})}
-          />
-          <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
-            {searchID} &middot; Program {claimParam}
-          </Typography>
-          <Typography
-            component="a"
-            href={redeemQrUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="caption"
-            sx={{ mt: 0.5, display: "inline-block", color: "primary.main", wordBreak: "break-all", textDecoration: "underline", cursor: "pointer" }}
-          >
-            {redeemQrUrl}
-          </Typography>
-        </Paper>
-      )}
-
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: "flex", gap: 2, alignItems: "flex-end", flexWrap: "wrap" }}>
+      <Paper sx={{ p: { xs: 1.5, sm: 2 } }}>
+        <Box
+          sx={{
+            display: "flex",
+            gap: 1,
+            alignItems: "flex-end",
+            flexWrap: "wrap",
+          }}
+        >
           <TextField
-            label="Member ID (Reward ID)"
+            label="Member code"
             value={memberID}
             onChange={(e) => setMemberID(e.target.value.toUpperCase())}
             sx={{ flexGrow: 1, minWidth: 150 }}
             inputProps={{ maxLength: 12 }}
-            placeholder="Enter member ID..."
+            placeholder="Enter your member code…"
+            size="small"
           />
           <QRScannerButton tooltip="Scan member QR to search" onScan={handleQRScan} />
-          <Button variant="contained" onClick={handleSearch} disabled={!memberID}>Look Up</Button>
+          <Button variant="contained" onClick={handleSearch} disabled={!memberID}>
+            Look up
+          </Button>
         </Box>
       </Paper>
+
+      <BalanceHero
+        available={aggregate.available}
+        unlocking={aggregate.timeLocked}
+        locked={aggregate.locked}
+        title="Member balance"
+        subtitle={heroSubtitle}
+      />
+
+      {memberExists && activeProgramId > 0 && (
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "repeat(2, 1fr)" },
+            gap: 1.25,
+          }}
+        >
+          <QuickActionCard
+            action={{
+              key: "receive",
+              icon: <QrCodeIcon sx={{ fontSize: 20 }} />,
+              title: "Show receive QR",
+              subtitle: "Let someone send points to you",
+              onClick: () => openQR("receive"),
+              accent: true,
+            }}
+          />
+          <QuickActionCard
+            action={{
+              key: "redeem-qr",
+              icon: <QrCode2Icon sx={{ fontSize: 20 }} />,
+              title: "Show redeem QR",
+              subtitle: hasClaimCode
+                ? "Cash out at a clerk"
+                : "Sign in with your claim code first",
+              onClick: () => openQR("redeem"),
+              disabled: !hasClaimCode,
+              disabledReason: "Open this page with ?code=… or sign in with your claim code",
+            }}
+          />
+        </Box>
+      )}
 
       {searchID && count > 0 && (
         <>
           {memberWallet && (
-            <Paper sx={{ p: 2, mb: 3 }}>
-              <Typography variant="body2" color="text.secondary">
-                Wallet: <Typography component="span" sx={{ fontFamily: "monospace" }}>{isMobile ? shortenAddress(memberWallet) : memberWallet}</Typography>
+            <Paper sx={{ p: { xs: 1.5, sm: 2 } }}>
+              <Typography variant="micro" sx={{ color: "text.tertiary", display: "block", mb: 0.25 }}>
+                Linked wallet
+              </Typography>
+              <Typography variant="mono" sx={{ fontSize: 13 }}>
+                {isMobile ? shortenAddress(memberWallet) : memberWallet}
               </Typography>
             </Paper>
           )}
 
           {!memberExists && (
-            <Alert severity="warning" sx={{ mb: 3 }}>No member found with ID &quot;{searchID}&quot; in any program.</Alert>
+            <Alert severity="warning">No member found with ID &quot;{searchID}&quot; in any program.</Alert>
           )}
 
           {memberExists && !memberWallet && (
             <>
-              <Alert severity="info" sx={{ mb: 2 }}>Member &quot;{searchID}&quot; exists but has no linked wallet (walletless member).</Alert>
-              <ClaimMemberSection memberID={searchID} programCount={count}
-                initialProgramId={claimParam} initialEditCode={codeParam} onClaimed={handleClaimed} />
+              <Alert severity="info">Member &quot;{searchID}&quot; exists but has no linked wallet (walletless member).</Alert>
+              <ClaimMemberSection
+                memberID={searchID}
+                programCount={count}
+                initialProgramId={claimParam}
+                initialEditCode={codeParam}
+                onClaimed={handleClaimed}
+              />
             </>
           )}
 
           {memberExists && (
             <>
-              <Paper sx={{ p: 2, mt: 2 }}>
-                <Typography variant="h6" gutterBottom sx={{ fontSize: { xs: "1rem", sm: "1.25rem" } }}>
-                  Programs & Balances for &quot;{searchID}&quot;
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
-                  Balance: Available / Permanently Locked / Time-Locked (FULA)
-                </Typography>
-
-                {/* Mobile: card layout */}
-                {isMobile && (
+              <Paper sx={{ p: { xs: 1.5, sm: 2 } }}>
+                <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 1, mb: 1 }}>
                   <Box>
+                    <Typography variant="micro" sx={{ color: "text.tertiary", display: "block" }}>
+                      Programs
+                    </Typography>
+                    <Typography sx={{ fontWeight: 600, fontSize: { xs: 15, sm: 16 } }}>
+                      Your memberships &amp; balances
+                    </Typography>
+                  </Box>
+                  <Typography variant="micro" sx={{ color: "text.tertiary" }}>
+                    Available · Locked · Unlocking
+                  </Typography>
+                </Box>
+
+                {isMobile && (
+                  <Stack spacing={1}>
                     {Array.from({ length: count }, (_, i) => (
                       <MemberProgramCard key={i + 1} memberID={searchID} programId={i + 1} isMobile />
                     ))}
-                  </Box>
+                  </Stack>
                 )}
 
-                {/* Desktop: table layout */}
                 {!isMobile && (
                   <TableContainer>
                     <Table size="small">
@@ -526,11 +645,10 @@ function BalanceContent() {
                           <TableCell>Role</TableCell>
                           <TableCell>Type</TableCell>
                           <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>Parent</TableCell>
-                          <TableCell>Available</TableCell>
+                          <TableCell>Withdrawable</TableCell>
                           <TableCell>Locked</TableCell>
-                          <TableCell>Time-Locked</TableCell>
+                          <TableCell>Unlocking</TableCell>
                           <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>Status</TableCell>
-                          <TableCell>QR</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -552,7 +670,18 @@ function BalanceContent() {
       {searchID && count === 0 && (
         <Alert severity="info">No programs exist yet.</Alert>
       )}
-    </Box>
+
+      {memberExists && activeProgramId > 0 && searchID && qrMode && (
+        <QRFullscreenCard
+          open={!!qrMode}
+          onClose={closeQR}
+          memberID={searchID}
+          programId={activeProgramId}
+          mode={qrMode}
+          claimCode={qrMode === "redeem" ? codeParam || undefined : undefined}
+        />
+      )}
+    </Stack>
   );
 }
 

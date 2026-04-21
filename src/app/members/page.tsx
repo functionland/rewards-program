@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import {
   Typography, Box, Paper, TextField, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, Button, ToggleButtonGroup,
@@ -8,6 +8,7 @@ import {
   CircularProgress, Select, MenuItem, FormControl, InputLabel,
   useMediaQuery, useTheme, Divider,
 } from "@mui/material";
+import { useSearchParams } from "next/navigation";
 import { useAccount, useReadContract } from "wagmi";
 import { keccak256 } from "viem";
 import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberTypeLabels, MemberRoleEnum } from "@/config/contracts";
@@ -19,22 +20,38 @@ import { QRScannerButton } from "@/components/common/QRScannerButton";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { RoleChip } from "@/components/rewards/RoleChip";
 import { MemberTypeChip } from "@/components/rewards/MemberTypeChip";
+import { MemberChainTree } from "@/components/rewards/MemberChainTree";
+import { virtualAddr } from "@/lib/memberKey";
+import { zeroAddress } from "viem";
 
 function generateEditCode(): `0x${string}` {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return ("0x" + Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("")) as `0x${string}`;
 }
 
-export default function MembersPage() {
+function MembersPageContent() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { address } = useAccount();
   const { isAdmin } = useUserRole();
+  const searchParams = useSearchParams();
 
   const [searchType, setSearchType] = useState<"memberID" | "programCode">("memberID");
   const [searchValue, setSearchValue] = useState("");
   const [programId, setProgramId] = useState("");
   const [searchTriggered, setSearchTriggered] = useState(false);
+
+  // Deep-link: /members?program=N&id=CODE auto-runs the member lookup.
+  useEffect(() => {
+    const idParam = searchParams.get("id") || searchParams.get("member");
+    const programParam = searchParams.get("program");
+    if (idParam && programParam) {
+      setSearchType("memberID");
+      setSearchValue(idParam.toUpperCase().slice(0, 12));
+      setProgramId(programParam);
+      setSearchTriggered(true);
+    }
+  }, [searchParams]);
 
   const pid = parseInt(programId) || 0;
   const { role: callerRole } = useMemberRole(pid);
@@ -218,6 +235,20 @@ export default function MembersPage() {
               </TableBody>
             </Table>
           </TableContainer>
+
+          {/* Parent-chain tree — shows who the points flow through.
+              Walletless origin uses the virtual storage key so the chain walk
+              starts from the right seat. */}
+          <Box sx={{ mt: 2 }}>
+            <MemberChainTree
+              programId={memberProgramId}
+              originAddress={
+                isWalletless
+                  ? virtualAddr(memberIdStr, memberProgramId)
+                  : (memberByID.wallet as `0x${string}`)
+              }
+            />
+          </Box>
 
           {/* Management Actions */}
           {canManage && address && (
@@ -404,5 +435,21 @@ export default function MembersPage() {
         </DialogActions>
       </Dialog>
     </Box>
+  );
+}
+
+export default function MembersPage() {
+  return (
+    <Suspense
+      fallback={
+        <Box sx={{ p: 2 }}>
+          <Typography variant="micro" sx={{ color: "text.tertiary" }}>
+            Loading…
+          </Typography>
+        </Box>
+      }
+    >
+      <MembersPageContent />
+    </Suspense>
   );
 }

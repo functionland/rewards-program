@@ -2,26 +2,18 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Box, Button, Paper, Stack, Typography } from "@mui/material";
-import QrCodeIcon from "@mui/icons-material/QrCode";
-import QrCode2Icon from "@mui/icons-material/QrCode2";
-import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
-import LogoutIcon from "@mui/icons-material/Logout";
-import AddCardOutlinedIcon from "@mui/icons-material/AddCardOutlined";
-import { zeroAddress } from "viem";
 import { useAccount } from "wagmi";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { BalanceHero } from "@/components/rewards/BalanceHero";
-import { QuickActionsGrid } from "@/components/rewards/QuickActionsGrid";
-import type { QuickAction } from "@/components/rewards/QuickActionCard";
 import { ProgramCard } from "@/components/rewards/ProgramCard";
 import { ActivityFeed } from "@/components/rewards/ActivityFeed";
 import { RibbonNotice } from "@/components/rewards/RibbonNotice";
 import { QRFullscreenCard, type QRMode } from "@/components/rewards/QRFullscreenCard";
+import { ProgramActionsFooter } from "@/components/rewards/ProgramActionsFooter";
 import { useHighestMemberRole } from "@/hooks/useHighestMemberRole";
 import { useAggregatedMemberBalance } from "@/hooks/useAggregatedMemberBalance";
-import { MemberRoleEnum } from "@/config/contracts";
 
 const CLAIM_CODE_STORE_KEY = (memberID: string, programId: number) =>
   `fula.rewards.claimCode.${programId}.${memberID}`;
@@ -67,19 +59,10 @@ function MeContent() {
 
   const effectiveClaimCode = codeParam || claimCodeFromStore || undefined;
 
-  const allWalletless =
-    memberships.length > 0 &&
-    memberships.every((m) => m.wallet === zeroAddress);
-  const hasDepositableProgram = memberships.some(
-    (m) => m.role >= MemberRoleEnum.ProgramAdmin,
-  );
-
-  const openQR = (mode: QRMode) => {
+  const openQRForProgram = (programId: number, mode: QRMode) => {
     const next = new URLSearchParams(searchParams.toString());
     next.set("showQR", mode);
-    if (activeMembership && !next.get("program")) {
-      next.set("program", String(activeMembership.programId));
-    }
+    next.set("program", String(programId));
     router.replace(`/me?${next.toString()}`);
   };
 
@@ -91,49 +74,6 @@ function MeContent() {
   };
 
   const hasUnlockingSoon = balance.unlocking > BigInt(0);
-
-  const actions: QuickAction[] = [
-    {
-      key: "receive",
-      icon: <QrCodeIcon sx={{ fontSize: 20 }} />,
-      title: "Show receive QR",
-      subtitle: "Let someone send points to you",
-      onClick: () => openQR("receive"),
-      accent: true,
-    },
-    {
-      key: "redeem-qr",
-      icon: <QrCode2Icon sx={{ fontSize: 20 }} />,
-      title: "Show redeem QR",
-      subtitle: "Cash out at a clerk",
-      onClick: () => openQR("redeem"),
-    },
-    {
-      key: "send-up",
-      icon: <ArrowUpwardIcon sx={{ fontSize: 20 }} />,
-      title: "Send up",
-      subtitle: "Pay your parent",
-      href: "/redeem?action=send-up",
-    },
-    {
-      key: "withdraw",
-      icon: <LogoutIcon sx={{ fontSize: 20 }} />,
-      title: "Withdraw",
-      subtitle: "Move to wallet",
-      href: "/redeem?action=withdraw",
-      disabled: allWalletless,
-      disabledReason: "Requires a connected wallet",
-    },
-    {
-      key: "add",
-      icon: <AddCardOutlinedIcon sx={{ fontSize: 20 }} />,
-      title: "Add funds",
-      subtitle: "Deposit to a program",
-      href: "/redeem?action=deposit",
-      disabled: !hasDepositableProgram,
-      disabledReason: "No depositable program",
-    },
-  ];
 
   if (!isConnected) {
     return (
@@ -205,8 +145,6 @@ function MeContent() {
         }
       />
 
-      <QuickActionsGrid actions={actions} />
-
       {memberships.length > 0 && (
         <Box>
           <Typography variant="micro" sx={{ color: "text.tertiary", display: "block", mb: 1 }}>
@@ -225,34 +163,13 @@ function MeContent() {
                 programId={m.programId}
                 href={`/programs?id=${m.programId}`}
                 footer={
-                  <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap", pt: 0.5 }}>
-                    <Button
-                      size="small"
-                      variant="pill"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        const next = new URLSearchParams(searchParams.toString());
-                        next.set("showQR", "receive");
-                        next.set("program", String(m.programId));
-                        router.replace(`/me?${next.toString()}`);
-                      }}
-                    >
-                      Receive QR
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="pill"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        const next = new URLSearchParams(searchParams.toString());
-                        next.set("showQR", "redeem");
-                        next.set("program", String(m.programId));
-                        router.replace(`/me?${next.toString()}`);
-                      }}
-                    >
-                      Redeem QR
-                    </Button>
-                  </Box>
+                  <ProgramActionsFooter
+                    programId={m.programId}
+                    memberID={m.memberID}
+                    role={m.role}
+                    onReceive={() => openQRForProgram(m.programId, "receive")}
+                    onRedeem={() => openQRForProgram(m.programId, "redeem")}
+                  />
                 }
               />
             ))}
