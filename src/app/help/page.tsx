@@ -746,6 +746,51 @@ export default function HelpPage() {
       </Accordion>
 
       <Divider sx={{ my: 3 }} />
+
+      <Accordion>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Typography variant="h6">On-chain data notice</Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Every write in this portal (deposit, transfer, add member, update program, etc.)
+            is a transaction on the Base blockchain. The data is <Bold>public, permanent, and verifiable</Bold> by anyone.
+          </Alert>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Before submitting an on-chain action you will be asked to confirm:
+          </Typography>
+          <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: "surface.one" }}>
+            <Typography variant="body2" sx={{ fontStyle: "italic", color: "text.secondary" }}>
+              &ldquo;I understand that the information I enter here is on-chain, publicly
+              visible, and verifiable. I confirm that I am not entering personal or
+              protected information.&rdquo;
+            </Typography>
+          </Paper>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            In practice this means:
+          </Typography>
+          <List dense>
+            <ListItem sx={{ pl: 0 }}>
+              <ListItemIcon sx={{ minWidth: 28 }}><CheckCircleIcon fontSize="small" color="success" /></ListItemIcon>
+              <ListItemText primary="Do include: program codes, member codes, reward-type names, note fields describing the action." />
+            </ListItem>
+            <ListItem sx={{ pl: 0 }}>
+              <ListItemIcon sx={{ minWidth: 28 }}><RemoveCircleOutlineIcon fontSize="small" color="error" /></ListItemIcon>
+              <ListItemText primary="Do not include: legal names, email addresses, phone numbers, government IDs, card numbers, or any other personal data." />
+            </ListItem>
+            <ListItem sx={{ pl: 0 }}>
+              <ListItemIcon sx={{ minWidth: 28 }}><CheckCircleIcon fontSize="small" color="success" /></ListItemIcon>
+              <ListItemText primary="Amounts, timestamps, wallet addresses, and transaction hashes are always visible — they are the record." />
+            </ListItem>
+          </List>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Once a transaction is submitted it cannot be edited or deleted. Plan what you type
+            into note fields accordingly.
+          </Typography>
+        </AccordionDetails>
+      </Accordion>
+
+      <Divider sx={{ my: 3 }} />
       <Typography variant="caption" color="text.secondary" textAlign="center" display="block">
         FULA Rewards Program Portal
       </Typography>

@@ -2,29 +2,24 @@
 
 import { useState, useEffect, useCallback, Suspense } from "react";
 import {
-  Typography, Box, Paper, Grid, Chip, Table, TableBody, TableCell,
+  Typography, Box, Paper, Grid, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, TextField, Button, Alert,
   CircularProgress, Select, MenuItem, FormControl, InputLabel,
   useMediaQuery, useTheme, Tabs, Tab,
 } from "@mui/material";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { useSearchParams } from "next/navigation";
-import { zeroAddress, encodePacked, keccak256, getAddress } from "viem";
-import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberTypeLabels } from "@/config/contracts";
+import { zeroAddress } from "viem";
+import { CONTRACTS, REWARDS_PROGRAM_ABI } from "@/config/contracts";
 import { toBytes12, fromBytes12, fromBytes8, shortenAddress, formatFula, formatContractError, fromBytes16, ipfsLogoUrl } from "@/lib/utils";
-
-/** Compute the virtual storage key for a walletless member (mirrors _virtualAddr in contract) */
-function virtualAddr(memberID: string, programId: number): `0x${string}` {
-  const memberIDBytes = toBytes12(memberID);
-  const hash = keccak256(encodePacked(["bytes12", "uint32"], [memberIDBytes, programId]));
-  // Take last 20 bytes (address = uint160 of uint256)
-  return getAddress("0x" + hash.slice(-40)) as `0x${string}`;
-}
+import { virtualAddr } from "@/lib/memberKey";
 import { QRCodeSVG } from "qrcode.react";
 import { useProgramCount, useProgram, useTransferToParent, useWithdraw, useDepositTokens, useRewardTypes, useTransferLimit, useClaimMember, useProgramLogo } from "@/hooks/useRewardsProgram";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
 import { QRScannerButton } from "@/components/common/QRScannerButton";
+import { RoleChip } from "@/components/rewards/RoleChip";
+import { MemberTypeChip } from "@/components/rewards/MemberTypeChip";
 
 /* -- Per-program membership row -- */
 
@@ -70,9 +65,8 @@ function MemberProgramCard({ memberID, programId, isMobile }: { memberID: string
             {programCode && <Typography variant="caption" color="text.secondary">{programCode} (P{programId})</Typography>}
           </Box>
           <Box sx={{ display: "flex", gap: 0.5 }}>
-            <Chip label={MemberRoleLabels[Number(member.role)] || "Unknown"} size="small"
-              color={Number(member.role) === 3 ? "primary" : Number(member.role) === 2 ? "secondary" : "default"} />
-            <Chip label={MemberTypeLabels[Number(member.memberType)] || "Free"} size="small" variant="outlined" />
+            <RoleChip role={Number(member.role)} />
+            <MemberTypeChip type={Number(member.memberType)} />
           </Box>
         </Box>
         <Box sx={{ display: "flex", gap: 2, mb: 1 }}>
@@ -108,11 +102,10 @@ function MemberProgramCard({ memberID, programId, isMobile }: { memberID: string
       <TableCell>{programName}</TableCell>
       <TableCell>{programCode || "-"}</TableCell>
       <TableCell>
-        <Chip label={MemberRoleLabels[Number(member.role)] || "Unknown"} size="small"
-          color={Number(member.role) === 3 ? "primary" : Number(member.role) === 2 ? "secondary" : "default"} />
+        <RoleChip role={Number(member.role)} />
       </TableCell>
       <TableCell>
-        <Chip label={MemberTypeLabels[Number(member.memberType)] || "Free"} size="small" variant="outlined" />
+        <MemberTypeChip type={Number(member.memberType)} />
       </TableCell>
       <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>{shortenAddress(member.parent)}</TableCell>
       <TableCell sx={{ color: "success.main" }}>{balance ? formatFula(balance[0]) : "-"}</TableCell>
@@ -407,10 +400,18 @@ function BalanceContent() {
   useEffect(() => {
     if (typeof window !== "undefined" && searchID && codeParam && claimParam && memberExists) {
       setRedeemQrUrl(`${window.location.origin}/redeem?member=${encodeURIComponent(searchID)}&claim=${encodeURIComponent(claimParam)}&code=${encodeURIComponent(codeParam)}`);
+      try {
+        window.localStorage.setItem(
+          `fula.rewards.claimCode.${claimProgramId}.${searchID}`,
+          codeParam,
+        );
+      } catch {
+        // localStorage may be unavailable (private mode, quota, etc.)
+      }
     } else {
       setRedeemQrUrl("");
     }
-  }, [searchID, codeParam, claimParam, memberExists]);
+  }, [searchID, codeParam, claimParam, memberExists, claimProgramId]);
 
   return (
     <Box>

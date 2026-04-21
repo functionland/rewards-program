@@ -10,13 +10,15 @@ import {
 } from "@mui/material";
 import { useAccount, useReadContract } from "wagmi";
 import { keccak256 } from "viem";
-import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberRoleLabels, MemberTypeLabels, MemberRoleEnum } from "@/config/contracts";
+import { CONTRACTS, REWARDS_PROGRAM_ABI, MemberTypeLabels, MemberRoleEnum } from "@/config/contracts";
 import { toBytes12, toBytes8, fromBytes12, shortenAddress, formatFula, formatContractError, isValidAddress } from "@/lib/utils";
 import { useProgramCodeToId, useSetMemberWallet, useSetEditCodeHash, useSetMemberType, useRemoveMember, useUpdateMemberID, useProgram } from "@/hooks/useRewardsProgram";
 import { useUserRole, useMemberRole } from "@/hooks/useUserRole";
 import { QRCodeDisplay } from "@/components/common/QRCodeDisplay";
 import { QRScannerButton } from "@/components/common/QRScannerButton";
 import { OnChainDisclaimer } from "@/components/common/OnChainDisclaimer";
+import { RoleChip } from "@/components/rewards/RoleChip";
+import { MemberTypeChip } from "@/components/rewards/MemberTypeChip";
 
 function generateEditCode(): `0x${string}` {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
@@ -198,11 +200,10 @@ export default function MembersPage() {
                     {isWalletless ? <Chip label="Walletless" size="small" color="warning" /> : shortenAddress(memberByID.wallet)}
                   </TableCell>
                   <TableCell>
-                    <Chip label={MemberRoleLabels[Number(memberByID.role)]} size="small"
-                      color={Number(memberByID.role) === 3 ? "primary" : Number(memberByID.role) === 2 ? "secondary" : "default"} />
+                    <RoleChip role={Number(memberByID.role)} />
                   </TableCell>
                   <TableCell>
-                    <Chip label={MemberTypeLabels[Number(memberByID.memberType)] || "Free"} size="small" variant="outlined" />
+                    <MemberTypeChip type={Number(memberByID.memberType)} />
                   </TableCell>
                   <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>{memberByID.programId}</TableCell>
                   <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>{shortenAddress(memberByID.parent)}</TableCell>

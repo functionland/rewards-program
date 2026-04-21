@@ -1,0 +1,25 @@
+{
+  "name": "FULA Rewards Portal",
+  "short_name": "FULA Rewards",
+  "description": "Manage reward programs, members, and FULA token distributions",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#22242c",
+  "theme_color": "#9b6bf5",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
