@@ -33,13 +33,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "FULA Rewards Portal",
-  description: "Manage reward programs, members, and FULA token distributions",
+  title: "Tribute: OnChain Royalties",
+  description: "Onchain royalty & rewards management — programs, members, and token distributions.",
   manifest: "/manifest.webmanifest",
-  applicationName: "FULA Rewards",
+  applicationName: "Tribute",
   appleWebApp: {
     capable: true,
-    title: "FULA Rewards",
+    title: "Tribute",
     statusBarStyle: "black-translucent",
   },
   icons: {

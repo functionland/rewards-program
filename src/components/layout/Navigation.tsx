@@ -38,7 +38,7 @@ export function Navigation({ mobileOpen, onClose }: { mobileOpen: boolean; onClo
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <AccountBalanceWalletIcon color="primary" />
           <Typography variant="h6" noWrap color="primary">
-            FULA Rewards
+            Tribute
           </Typography>
         </Box>
       </Toolbar>

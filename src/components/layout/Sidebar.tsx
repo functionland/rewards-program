@@ -194,13 +194,13 @@ export function Sidebar({
         </Box>
         <Box sx={{ lineHeight: 1.1 }}>
           <Typography sx={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.005em" }}>
-            FULA Rewards
+            Tribute
           </Typography>
           <Typography
             variant="micro"
             sx={{ color: "text.tertiary", display: "block", mt: 0.25 }}
           >
-            Portal
+            OnChain Royalties
           </Typography>
         </Box>
       </Toolbar>

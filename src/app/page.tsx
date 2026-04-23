@@ -63,7 +63,7 @@ function GuestSplitScreen() {
       >
         <Stack spacing={1}>
           <Typography variant="micro" sx={{ color: "text.tertiary" }}>
-            FULA Rewards Portal
+            Tribute · OnChain Royalties
           </Typography>
           <Typography
             sx={{

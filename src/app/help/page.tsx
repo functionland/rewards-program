@@ -126,7 +126,7 @@ export default function HelpPage() {
         Onboarding Guide
       </Typography>
       <Para>
-        This guide walks you through every action in the Rewards Program portal, organized by role.
+        This guide walks you through every action in the Tribute portal, organized by role.
         No technical knowledge is required.
       </Para>
 
@@ -795,7 +795,7 @@ export default function HelpPage() {
 
       <Divider sx={{ my: 3 }} />
       <Typography variant="caption" color="text.secondary" textAlign="center" display="block">
-        FULA Rewards Program Portal
+        Tribute · OnChain Royalties
       </Typography>
     </Box>
   );

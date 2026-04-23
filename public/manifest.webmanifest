@@ -1,7 +1,7 @@
 {
-  "name": "FULA Rewards Portal",
-  "short_name": "FULA Rewards",
-  "description": "Manage reward programs, members, and FULA token distributions",
+  "name": "Tribute: OnChain Royalties",
+  "short_name": "Tribute",
+  "description": "Onchain royalty & rewards management — programs, members, and token distributions.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
